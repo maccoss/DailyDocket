@@ -85,7 +85,7 @@ Attachments are out of scope for offline replies in version 1: the Gmail connect
 
 ## To-dos and dashboard state in GitHub
 
-The to-do list, and the little dashboard state that Gmail, Calendar and Slack cannot hold, live in one private repository under github.com/maccoss, one file per item, synced with LabOps' `SyncService` (commit to main, rebase before push, never merge or force-push). Git already works offline: each machine commits locally and pushes when it can.
+The to-do list, and the little dashboard state that Gmail, Calendar and Slack cannot hold, live in one private repository, `maccoss/DailyDocket-Data` (separate from the app's code), one file per item, synced with LabOps' `SyncService` (commit to main, rebase before push, never merge or force-push). Git already works offline: each machine commits locally and pushes when it can.
 
 ```
 todos/t3k9f2a1.md          one task: YAML front matter + notes
@@ -272,7 +272,7 @@ Still to run: pillar, SpeedyGonzales and the Surface (ARM64 `claude.exe`), and F
 
 Each has a recommendation, so work can start on the defaults.
 
-- [ ] **Where the to-do repository lives.** Decided: a new private repository under github.com/maccoss (it holds personal tasks, so not in uw-maccosslab). (GitHub Issues were set aside: they need their own offline queue.)
+- [x] **Where the to-do repository lives.** Decided: `maccoss/DailyDocket-Data`, private (it holds personal tasks and mail-derived briefs, so not in uw-maccosslab). The app repository, `maccoss/DailyDocket`, holds no data, so it can be public, and Velopack then updates every machine from its GitHub Releases without a token. (GitHub Issues were set aside: they need their own offline queue.)
 - [ ] **UI framework.** Decided: WPF, to share LabOps' code and conventions. WinUI 3 would only be needed for Phi Silica, which this design does not use.
 - [ ] **Encrypt the local database?** Decided: yes, SQLCipher with the key in Credential Manager, since the laptop travels.
 - [ ] **Which machine runs the nightly sweep and meeting prep.** Decided: skiddaw, the least-used machine (i9-12900K, 64 GB), with SpeedyGonzales as the first fallback. No GPU is needed, since these runs are Claude working in the cloud; the machine only has to be on and online. A lease file in the repository lets another machine take over when it misses a run. Set in `config/docket.yaml`.
