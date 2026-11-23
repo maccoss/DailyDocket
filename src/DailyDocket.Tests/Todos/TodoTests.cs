@@ -221,6 +221,67 @@ public sealed class TodoTests : IDisposable
     }
 
     [Fact]
+    public async Task Verdicts_briefs_and_the_lease_written_on_two_machines_take_the_remote_copy_without_a_set_aside()
+    {
+        var tools = new ToolLocator();
+        var runner = new ProcessRunner(tools);
+        var bare = Path.Combine(_dir, "remote.git");
+        await new GitClient(runner, tools) { RepositoryPath = _dir }.RequireAsync(["init", "--bare", "--initial-branch=main", bare]);
+        var url = new Uri(bare).AbsoluteUri;
+        var a = new DataSync(runner, tools, Path.Combine(_dir, "a"), "pillar");
+        var b = new DataSync(runner, tools, Path.Combine(_dir, "b"), "surface");
+        (await a.EnsureClonedAsync(url)).ShouldBeNull();
+        await Identify(runner, tools, a.RepositoryPath);
+        new DataRepository(a.RepositoryPath).Save(Task("t1"));
+        (await a.SyncAsync("Add a task")).Ok.ShouldBeTrue();
+        (await b.EnsureClonedAsync(url)).ShouldBeNull();
+        await Identify(runner, tools, b.RepositoryPath);
+
+        static void Write(string root, string file, string text)
+        {
+            var path = Path.Combine(root, file);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, text);
+        }
+
+        // Both judge the same new email in the same quarter hour: an add/add conflict, and the
+        // Surface's commit holds nothing else, so it ends up empty and is skipped.
+        Write(a.RepositoryPath, "verdicts/email/m1.yaml", "machine: \"pillar\"\n");
+        Write(b.RepositoryPath, "verdicts/email/m1.yaml", "machine: \"surface\"\n");
+        (await a.SyncAsync("verdict")).Ok.ShouldBeTrue();
+        var first = await b.SyncAsync("verdict");
+        first.Ok.ShouldBeTrue();
+        first.SetAside.ShouldBeNull();
+        File.ReadAllText(Path.Combine(b.RepositoryPath, "verdicts", "email", "m1.yaml")).ShouldContain("pillar");
+
+        // A brief and the lease changed on both, beside a new task only the Surface has: the
+        // shared files take the remote copy and the task still reaches the remote.
+        Write(a.RepositoryPath, "briefs/2026-11-23/e1.md", "pillar's brief\n");
+        Write(a.RepositoryPath, "state/lease.yaml", "holder: \"pillar\"\n");
+        Write(b.RepositoryPath, "briefs/2026-11-23/e1.md", "surface's brief\n");
+        Write(b.RepositoryPath, "state/lease.yaml", "holder: \"surface\"\n");
+        new DataRepository(b.RepositoryPath).Save(Task("t5"));
+        (await a.SyncAsync("brief")).Ok.ShouldBeTrue();
+        var second = await b.SyncAsync("brief");
+        second.Ok.ShouldBeTrue();
+        second.SetAside.ShouldBeNull();
+        File.ReadAllText(Path.Combine(b.RepositoryPath, "state", "lease.yaml")).ShouldContain("pillar");
+        File.ReadAllText(Path.Combine(b.RepositoryPath, "briefs", "2026-11-23", "e1.md")).ShouldContain("pillar");
+        (await a.SyncAsync("pull")).Ok.ShouldBeTrue();
+        new DataRepository(a.RepositoryPath).LoadTodos().Select(t => t.Id).ShouldBe(["t1", "t5"], ignoreOrder: true);
+        (await new GitClient(runner, tools) { RepositoryPath = b.RepositoryPath }.RequireAsync(["branch", "--list", "set-aside/*"])).Trim().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("verdicts/email/m1.yaml", true)]
+    [InlineData("briefs/2026-11-23/e1.md", true)]
+    [InlineData("state/lease.yaml", true)]
+    [InlineData("todos/t1.md", false)]
+    [InlineData("handled/email.yaml", false)]
+    public void Only_the_folders_the_app_writes_itself_are_resolved_automatically(string path, bool shared) =>
+        DataSync.IsShared(path).ShouldBe(shared);
+
+    [Fact]
     public async Task Without_a_remote_a_change_stays_committed_locally()
     {
         var tools = new ToolLocator();

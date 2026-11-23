@@ -132,6 +132,11 @@ impact first, empty headings deleted at release.
 - A to-do sync that failed in the background now says so in the window instead of failing silently,
   and a problem saving one sync's results no longer stops syncing until restart.
 
+- When two computers judged the same new email, or wrote the same brief, within one sync, the
+  window said "A to-do was changed on two computers at once" and kept a set-aside branch. Verdicts,
+  briefs and the nightly lease now take the copy already sent from the other computer; the banner
+  appears only when a to-do really conflicts.
+
 - Closing DailyDocket no longer showed "DailyDocket could not start: The CancellationTokenSource
   has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),
   and a problem while cleaning up is now logged rather than reported as a failed start.

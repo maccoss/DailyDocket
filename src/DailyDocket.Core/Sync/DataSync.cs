@@ -21,7 +21,9 @@ public sealed record DataSyncResult(bool Ok, bool Offline, bool Changed, string?
 /// <para>
 /// Files are one per item, so two machines conflict only when both changed the same task offline.
 /// Then this machine's commits go to a local set-aside/... branch, main takes the remote's
-/// version, and the window says so (the design's "later wins, the other is kept").
+/// version, and the window says so (the design's "later wins, the other is kept"). Files the app
+/// writes on its own (verdicts, briefs, the lease) never get that far: the remote's copy is taken
+/// during the rebase (<see cref="ResolveSharedConflictsAsync"/>).
 /// </para>
 /// </remarks>
 public sealed class DataSync
@@ -99,10 +101,10 @@ public sealed class DataSync
 
             // A brand-new remote has no main yet: the first push creates it.
             var remoteHasMain = (await _git.RunAsync(["rev-parse", "--verify", "--quiet", "origin/main"], cancellationToken).ConfigureAwait(false)).Succeeded;
-            var rebase = remoteHasMain
-                ? await _git.RunAsync(["rebase", "origin/main"], cancellationToken).ConfigureAwait(false)
-                : null;
-            if (rebase is { Succeeded: false })
+            var rebased = !remoteHasMain
+                || (await _git.RunAsync(["rebase", "origin/main"], cancellationToken).ConfigureAwait(false)).Succeeded
+                || await ResolveSharedConflictsAsync(cancellationToken).ConfigureAwait(false);
+            if (!rebased)
             {
                 await _git.RunAsync(["rebase", "--abort"], cancellationToken).ConfigureAwait(false);
                 setAside = $"set-aside/{_machine}-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}";
@@ -128,6 +130,79 @@ public sealed class DataSync
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Folders the app writes on its own (shared verdicts, meeting briefs, the nightly lease). Two
+    /// machines often write the same file within one sync (both triage the same new email), and the
+    /// files always differ (each names its machine and time), so these conflict routinely.
+    /// </summary>
+    internal static readonly string[] SharedFolders = ["verdicts/", "briefs/", "state/"];
+
+    /// <summary>
+    /// While a rebase is stopped on conflicts: when every conflicting file is in
+    /// <see cref="SharedFolders"/>, takes the remote's copy and carries on, as often as the rebase
+    /// stops. False (rebase still stopped) at the first conflict on any other file, a to-do, which
+    /// the caller sets aside for Mike.
+    /// </summary>
+    /// <remarks>
+    /// The remote's copy is the one already pushed, so taking it matches "the first judgment
+    /// stands" for verdicts, keeps the brief other machines already show, and makes the machine
+    /// that lost a race for the lease see the winner's claim. Showing these as to-do conflicts
+    /// would put a banner up for something Mike cannot and need not decide.
+    /// </remarks>
+    private async Task<bool> ResolveSharedConflictsAsync(CancellationToken cancellationToken)
+    {
+        if (!_git.RebaseInProgress())
+        {
+            return false; // the rebase failed without stopping on a conflict: nothing to resolve
+        }
+
+        // A rebase stops at most once per replayed commit; the cap only guards against a loop.
+        for (var round = 0; round < 200 && _git.RebaseInProgress(); round++)
+        {
+            var conflicted = (await _git.RequireAsync(["diff", "--name-only", "-z", "--diff-filter=U"], cancellationToken).ConfigureAwait(false))
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            if (conflicted.Count == 0 || !conflicted.All(IsShared))
+            {
+                return false;
+            }
+
+            foreach (var file in conflicted)
+            {
+                // During a rebase "ours" is the branch being rebased onto: the remote.
+                var taken = await _git.RunAsync(["checkout", "--ours", "--", file], cancellationToken).ConfigureAwait(false);
+                if (taken.Succeeded)
+                {
+                    await _git.RequireAsync(["add", "--", file], cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    // The remote deleted it (an old brief cleaned up, say): the deletion stands.
+                    await _git.RequireAsync(["rm", "-q", "-f", "--ignore-unmatch", "--", file], cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            _log.LogInformation("Data sync: took the other computer's copy of {Count} shared files changed on both", conflicted.Count);
+
+            // A commit whose every change lost to the remote is empty now, and git refuses to
+            // continue with an empty commit: skip it instead.
+            var nothingLeft = (await _git.RunAsync(["diff", "--cached", "--quiet"], cancellationToken).ConfigureAwait(false)).Succeeded;
+            var next = await _git.RunAsync(nothingLeft ? ["rebase", "--skip"] : ["rebase", "--continue"], cancellationToken).ConfigureAwait(false);
+            if (next.Succeeded && !_git.RebaseInProgress())
+            {
+                return true;
+            }
+        }
+
+        return !_git.RebaseInProgress();
+    }
+
+    internal static bool IsShared(string path)
+    {
+        var p = path.Replace('\\', '/');
+        return SharedFolders.Any(f => p.StartsWith(f, StringComparison.Ordinal));
     }
 
     /// <summary>
