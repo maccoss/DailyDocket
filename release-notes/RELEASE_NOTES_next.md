@@ -12,6 +12,12 @@ impact first, empty headings deleted at release.
 
 ## Bug Fixes
 
+- Email sent to a group address (such as the lab's services address) never reached the Email tab:
+  Gmail files mail that arrives through a Google Group under Forums, which DailyDocket leaves out.
+  Addresses listed under `mail.groups` in `docket.yaml` are now read wherever Gmail files them;
+  the rest of Forums (department lists, notifications) still is not.
+  (`src/DailyDocket.Core/Jobs/JobPlans.cs`, `docs/docket.example.yaml`)
+
 - A Slack DM answered with **Reply** in a thread (Slack's reply on a message) stayed listed as
   needing a reply: the message that started the thread was counted with the DM, where the last word
   was still theirs. A thread's first message now belongs to the thread, as in Slack, so answering it

@@ -81,12 +81,23 @@ public sealed class JobPlanTests
     public void A_day_is_midnight_to_midnight_in_his_time_zone()
     {
         // 07:30 UTC on Nov 23 is still Nov 22 in Pacific time.
-        var searches = JobPlans.DaySearches(new DateTimeOffset(2026, 11, 23, 7, 30, 0, TimeSpan.Zero), Fixture.Pacific, 1, 0);
+        var searches = JobPlans.DaySearches(new DateTimeOffset(2026, 11, 23, 7, 30, 0, TimeSpan.Zero), Fixture.Pacific, "in:inbox", 1, 0);
 
         searches.Count.ShouldBe(2);
         searches[0].ShouldContain("after:2026/11/22 before:2026/11/23");
         searches[1].ShouldContain("after:2026/11/21 before:2026/11/22");
         searches[0].ShouldContain("\"pageSize\":50");
+    }
+
+    [Fact]
+    public void Forums_mail_to_his_groups_is_searched_and_the_rest_of_forums_is_not()
+    {
+        JobPlans.InboxQuery(new Core.Configuration.MailConfig())
+            .ShouldBe("in:inbox -category:promotions -category:updates -category:social -category:forums");
+
+        var mail = new Core.Configuration.MailConfig { Groups = ["services@lab.example.org", " services@lab.example.org ", "bad address@x.org", "x@y.org}"] };
+        JobPlans.InboxQuery(mail)
+            .ShouldBe("in:inbox -category:promotions -category:updates -category:social {-category:forums to:services@lab.example.org cc:services@lab.example.org}");
     }
 
     [Fact]
