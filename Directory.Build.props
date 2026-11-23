@@ -7,6 +7,10 @@
       YY       two-digit year (26 = 2026)
       feature  incremented for each release containing new features, restarting each year
       patch    incremented for bug-fix-only releases within the same feature version
+
+    This value and the git tag must match: release.yml will refuse to publish when tag
+    v<version> disagrees with this property. Bump it here, commit, then tag. It is bumped only at
+    release time; see release-notes/README.md.
   -->
   <PropertyGroup>
     <Version>26.0.0</Version>

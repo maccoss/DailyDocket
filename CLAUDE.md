@@ -60,6 +60,16 @@ dotnet test --project src/DailyDocket.Tests/DailyDocket.Tests.csproj
 - Publishing the hook ahead of time needs Visual Studio's C++ build tools.
 - Both `win-x64` and `win-arm64` are published; nothing may depend on x64 emulation.
 
+CI (`.github/workflows/ci.yml`) builds, tests and publishes the AOT hook on an x64 and an ARM64
+Windows runner for every pull request and push to `main`. Locally, an AOT publish needs
+`C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH (for `vswhere.exe`).
+
+## Versioning and releases
+
+LabOps' convention: CalVer `YY.feature.patch` in `Directory.Build.props`, bumped only at release
+time; the tag `v{version}` must match. The draft notes live in `release-notes/RELEASE_NOTES_next.md`;
+the full process is in `release-notes/README.md`.
+
 ## House style (from LabOps and PanoramaBridge)
 
 - No emojis anywhere.
