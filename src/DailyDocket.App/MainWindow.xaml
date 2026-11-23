@@ -57,8 +57,22 @@
         </Border>
 
         <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0" SelectedIndex="{Binding SelectedTab}">
-            <TabItem Header="SCHEDULE">
-                <DockPanel>
+            <!-- Schedule and To do side by side, as on the dashboard artifact: the schedule a little
+                 wider on the left. A narrow window stacks them (OnDayGridSizeChanged). -->
+            <TabItem Header="SCHEDULE &amp; TO DO">
+                <Grid x:Name="DayGrid" SizeChanged="OnDayGridSizeChanged">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="0" />
+                    </Grid.RowDefinitions>
+                <DockPanel x:Name="ScheduleColumn" Margin="0,0,14,0">
+                        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource AccentBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,5" Margin="0,0,0,8">
+                            <TextBlock Text="SCHEDULE" FontSize="14" FontWeight="ExtraBold" />
+                        </Border>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ScheduleSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
                     <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding ScheduleOutbox}">
                             <ItemsControl.ItemTemplate>
@@ -285,10 +299,14 @@
                         </ItemsControl>
                     </ScrollViewer>
                 </DockPanel>
-            </TabItem>
 
-            <TabItem Header="TO DO">
-                <views:TodoTab DataContext="{Binding Todos}" />
+                    <DockPanel x:Name="TodoColumn" Grid.Column="1" Margin="14,0,0,0">
+                        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource WarnBrush}" BorderThickness="0,0,0,2" Padding="0,0,0,5" Margin="0,0,0,8">
+                            <TextBlock Text="TO DO" FontSize="14" FontWeight="ExtraBold" />
+                        </Border>
+                        <views:TodoTab DataContext="{Binding Todos}" />
+                    </DockPanel>
+                </Grid>
             </TabItem>
 
             <TabItem Header="EMAIL">

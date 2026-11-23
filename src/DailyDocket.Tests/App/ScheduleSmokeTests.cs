@@ -74,6 +74,10 @@ public sealed class ScheduleSmokeTests
                 ["Decide the renewal's aims"], ["Pat asked for a draft budget"], ["The draft budget"], ["Whether the budget includes travel"], [],
                 DateTimeOffset.Now, "smoke", "sonnet"));
 
+            var now = DateTimeOffset.Now;
+            new DailyDocket.Core.Todos.DataRepository(repo).Save(new DailyDocket.Core.Todos.TodoItem(
+                "smoke-todo", "Send the renewal budget", "Pat asked for it before the meeting.", tomorrow, ["renewal"], 1, false, null, now, null, now, "smoke"));
+
             using var instance = SingleInstance.Acquire($"DailyDocketSmoke-{Guid.NewGuid():N}", Path.Combine(root, "smoke.lock"));
             var app = new DailyDocket.App.App(services, instance);
             app.InitializeComponent();
@@ -113,6 +117,24 @@ public sealed class ScheduleSmokeTests
             ShowsUnanswered(window).ShouldBeFalse();
             Descendants<Expander>(window).ShouldHaveSingleItem().IsExpanded.ShouldBeTrue();
 
+            // Schedule and To do share the first tab: side by side when the window is wide,
+            // stacked when it is narrow, as on the dashboard artifact.
+            var todo = (FrameworkElement)window.FindName("TodoColumn");
+            services.GetRequiredService<DailyDocket.Core.Todos.TodoBook>().Reload();   // there is no clone, so Start did not load it
+            vm.Todos.Refresh();
+            window.Width = 1400;
+            Pump();
+            (Grid.GetColumn(todo), Grid.GetRow(todo)).ShouldBe((1, 0));
+            todo.IsVisible.ShouldBeTrue();
+            Descendants<TextBlock>(todo).ShouldContain(t => t.Text == "Send the renewal budget" && t.IsVisible);
+            Snapshot(window, "wide");
+            window.Width = 760;
+            Pump();
+            (Grid.GetColumn(todo), Grid.GetRow(todo)).ShouldBe((0, 1));
+            Snapshot(window, "narrow");
+            window.Width = 1100;
+            Pump();
+
             // Minimizing hides the window to the notification area.
             window.WindowState = WindowState.Minimized;
             Pump();
@@ -134,6 +156,31 @@ public sealed class ScheduleSmokeTests
         {
             // A log file still closing; the temp folder is cleaned up eventually.
         }
+    }
+
+    /// <summary>Saves a picture of the window when DAILYDOCKET_SNAPSHOTS names a folder, for looking at a layout change.</summary>
+    private static void Snapshot(Window window, string name)
+    {
+        if (Environment.GetEnvironmentVariable("DAILYDOCKET_SNAPSHOTS") is not { Length: > 0 } folder)
+        {
+            return;
+        }
+
+        var content = (FrameworkElement)window.Content;
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)content.ActualWidth, (int)content.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            var area = new Rect(0, 0, content.ActualWidth, content.ActualHeight);
+            dc.DrawRectangle(window.Background, null, area);
+            dc.DrawRectangle(new VisualBrush(content), null, area);
+        }
+
+        bitmap.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(folder, $"{name}.png"));
+        encoder.Save(stream);
     }
 
     private static bool ShowsUnanswered(Window window) =>

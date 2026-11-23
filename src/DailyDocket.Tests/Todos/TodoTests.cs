@@ -197,6 +197,49 @@ public sealed class TodoTests : IDisposable
     }
 
     [Fact]
+    public async Task Commits_never_pushed_to_an_empty_repository_keep_it_from_being_moved_aside()
+    {
+        var tools = new ToolLocator();
+        var runner = new ProcessRunner(tools);
+        var bare = Path.Combine(_dir, "remote.git");
+        await new GitClient(runner, tools) { RepositoryPath = _dir }.RequireAsync(["init", "--bare", "--initial-branch=main", bare]);
+        var sync = new DataSync(runner, tools, Path.Combine(_dir, "data"), "pillar");
+        (await sync.EnsureClonedAsync(new Uri(bare).AbsoluteUri)).ShouldBeNull();
+        await Identify(runner, tools, sync.RepositoryPath);
+        var git = new GitClient(runner, tools) { RepositoryPath = sync.RepositoryPath };
+        new DataRepository(sync.RepositoryPath).Save(Task("t1"));
+        await git.RequireAsync(["add", "-A"]);
+        await git.RequireAsync(["commit", "-m", "Offline, never pushed"]);
+
+        // origin/main does not exist, so origin/main..HEAD could not be counted.
+        (await sync.SetAsideAsync()).ShouldNotBeNull();
+        sync.IsCloned.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Files_written_before_the_clone_are_moved_aside_and_two_clones_at_once_make_one()
+    {
+        var tools = new ToolLocator();
+        var runner = new ProcessRunner(tools);
+        var bare = Path.Combine(_dir, "remote.git");
+        await new GitClient(runner, tools) { RepositoryPath = _dir }.RequireAsync(["init", "--bare", "--initial-branch=main", bare]);
+
+        // A trailing separator: the clone still goes beside the folder, not inside it.
+        var sync = new DataSync(runner, tools, Path.Combine(_dir, "data") + Path.DirectorySeparatorChar, "pillar");
+        sync.RepositoryPath.ShouldBe(Path.Combine(_dir, "data"));
+        Directory.CreateDirectory(Path.Combine(sync.RepositoryPath, "verdicts", "email"));
+        File.WriteAllText(Path.Combine(sync.RepositoryPath, "verdicts", "email", "x.yaml"), "verdict: reply");
+
+        var url = new Uri(bare).AbsoluteUri;
+        var results = await System.Threading.Tasks.Task.WhenAll(sync.EnsureClonedAsync(url), sync.EnsureClonedAsync(url));
+
+        results.ShouldAllBe(r => r == null);
+        sync.IsCloned.ShouldBeTrue();
+        File.Exists(Directory.GetDirectories(_dir, "data.before-clone-*").ShouldHaveSingleItem() + @"\verdicts\email\x.yaml").ShouldBeTrue();
+        Directory.Exists(sync.RepositoryPath + ".cloning").ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task A_repository_with_unsent_changes_is_not_moved_aside()
     {
         var tools = new ToolLocator();
