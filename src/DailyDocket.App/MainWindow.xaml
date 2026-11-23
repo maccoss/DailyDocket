@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:DailyDocket.App.ViewModels"
         xmlns:views="clr-namespace:DailyDocket.App.Views"
-        Title="DailyDocket" Icon="pack://application:,,,/Assets/app.ico" Width="1100" Height="820" MinWidth="560" MinHeight="420"
+        Title="DailyDocket" Icon="pack://application:,,,/DailyDocket;component/Assets/app.ico" Width="1100" Height="820" MinWidth="560" MinHeight="420"
         Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource InkBrush}"
         FontFamily="Segoe UI" FontSize="14"
         WindowStartupLocation="CenterScreen">
@@ -181,6 +181,13 @@
                                                                 </WrapPanel>
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                                                <Button Content="Join" HorizontalAlignment="Right" Margin="0,0,0,4" Style="{StaticResource OpenButton}"
+                                                                        ToolTip="{Binding JoinLink}"
+                                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding JoinLink}">
+                                                                    <Button.Visibility>
+                                                                        <Binding Path="JoinLink" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                                    </Button.Visibility>
+                                                                </Button>
                                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Visibility="{Binding CanRespond, Converter={StaticResource BoolToVisibility}}">
                                                                     <Button Content="Accept" Style="{StaticResource OpenButton}" Margin="0,0,4,0" ToolTip="Accept (you can undo for a minute)"
                                                                             Command="{Binding DataContext.AcceptEventCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
@@ -215,7 +222,9 @@
                                                             </TextBlock.Visibility>
                                                         </TextBlock>
                                                         <!-- The meeting brief, folded until wanted; read from the data repository, so offline too. -->
-                                                        <Expander Header="Brief" Margin="110,6,0,0" DataContext="{Binding Brief}" Foreground="{StaticResource Ink2Brush}">
+                                                        <!-- IsExpanded is bound through the event's card (its DataContext is the brief): a reload keeps it open. -->
+                                                        <Expander Header="Brief" Margin="110,6,0,0" DataContext="{Binding Brief}" Foreground="{StaticResource Ink2Brush}"
+                                                                  IsExpanded="{Binding DataContext.BriefOpen, RelativeSource={RelativeSource AncestorType=StackPanel}, Mode=TwoWay}">
                                                             <Expander.Visibility>
                                                                 <Binding Converter="{x:Static vm:Converters.NotNullToVisibility}" />
                                                             </Expander.Visibility>

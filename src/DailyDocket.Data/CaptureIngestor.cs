@@ -302,8 +302,8 @@ public sealed class CaptureIngestor
             c.Execute(
                 """
                 INSERT OR REPLACE INTO calendar_event
-                    (calendar_key, event_id, start_utc, end_utc, all_day, title, location, guests, my_response, html_link, status, event_type, updated_utc, content_hash)
-                VALUES (@CalendarKey, @EventId, @start, @end, @AllDay, @Title, @Location, @Guests, @MyResponse, @HtmlLink, @Status, @EventType, @updated, @ContentHash)
+                    (calendar_key, event_id, start_utc, end_utc, all_day, title, location, guests, my_response, html_link, status, event_type, updated_utc, content_hash, join_link)
+                VALUES (@CalendarKey, @EventId, @start, @end, @AllDay, @Title, @Location, @Guests, @MyResponse, @HtmlLink, @Status, @EventType, @updated, @ContentHash, @JoinLink)
                 """,
                 new
                 {
@@ -321,6 +321,7 @@ public sealed class CaptureIngestor
                     e.EventType,
                     updated = DocketDatabase.Iso(e.Updated),
                     e.ContentHash,
+                    e.JoinLink,
                 },
                 tx);
         }

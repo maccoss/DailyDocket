@@ -56,7 +56,8 @@ public sealed class Store
                     (string)r.status,
                     (string?)r.event_type,
                     DocketDatabase.FromIso((string?)r.updated_utc),
-                    (string?)r.content_hash)),
+                    (string?)r.content_hash,
+                    (string?)r.join_link)),
         ];
     }
 

@@ -1,7 +1,18 @@
 namespace DailyDocket.App.ViewModels;
 
 /// <summary>A day on the Schedule tab.</summary>
-public sealed record DayItem(string Key, string Heading, string Date, bool IsToday, IReadOnlyList<BannerItem> Background, IReadOnlyList<EventItem> Events);
+/// <remarks>
+/// Equal by content, lists included: a record compares lists by reference, so every reload made
+/// every day "different", the Schedule redrew all of them, and an open Brief closed within seconds.
+/// </remarks>
+public sealed record DayItem(string Key, string Heading, string Date, bool IsToday, IReadOnlyList<BannerItem> Background, IReadOnlyList<EventItem> Events)
+{
+    public bool Equals(DayItem? other) =>
+        other is not null && Key == other.Key && Heading == other.Heading && Date == other.Date && IsToday == other.IsToday
+        && Background.SequenceEqual(other.Background) && Events.SequenceEqual(other.Events);
+
+    public override int GetHashCode() => HashCode.Combine(Key, Heading, Date, Events.Count);
+}
 
 /// <summary>An all-day or long event, shown as scenery across the top of a day.</summary>
 public sealed record BannerItem(string Title, string Tag, string? Link);
@@ -12,13 +23,30 @@ public sealed record BannerItem(string Title, string Tag, string? Link);
 /// <param name="Response">His response as the calendar last reported it, or the one on its way out.</param>
 /// <param name="Brief">The meeting brief from the data repository, when one exists.</param>
 /// <param name="PrepNote">"Preparing a brief..." while Prep now runs, or why it did not work.</param>
+/// <param name="JoinLink">The Zoom, Teams, Meet or Webex link behind the Join button, when there is one.</param>
 public sealed record EventItem(string Time, string Title, string Tag, string Location, bool Clash, bool NeedsReply, bool Quiet, string? Link,
     string EventId = "", string? CalendarId = null, bool CanRespond = false, string? Response = null,
-    BriefView? Brief = null, bool IsPrepping = false, string? PrepNote = null);
+    BriefView? Brief = null, bool IsPrepping = false, string? PrepNote = null, string? JoinLink = null)
+{
+    /// <summary>
+    /// Whether Mike has the Brief open, bound two-way to its expander. A reload copies it onto the
+    /// new item for the same event, so a day redrawn because something on it changed keeps it open.
+    /// </summary>
+    public bool BriefOpen { get; set; }
+}
 
 /// <summary>A meeting brief as the Schedule shows it under its event.</summary>
 /// <param name="Note">Who wrote it and when, and "may be out of date" when the event changed since.</param>
-public sealed record BriefView(IReadOnlyList<string> Who, IReadOnlyList<string> Agenda, IReadOnlyList<string> Context, IReadOnlyList<string> Owes, IReadOnlyList<string> Gaps, string Note, bool Stale);
+/// <remarks>Equal by content, for the reason given on <see cref="DayItem"/>.</remarks>
+public sealed record BriefView(IReadOnlyList<string> Who, IReadOnlyList<string> Agenda, IReadOnlyList<string> Context, IReadOnlyList<string> Owes, IReadOnlyList<string> Gaps, string Note, bool Stale)
+{
+    public bool Equals(BriefView? other) =>
+        other is not null && Note == other.Note && Stale == other.Stale
+        && Who.SequenceEqual(other.Who) && Agenda.SequenceEqual(other.Agenda) && Context.SequenceEqual(other.Context)
+        && Owes.SequenceEqual(other.Owes) && Gaps.SequenceEqual(other.Gaps);
+
+    public override int GetHashCode() => HashCode.Combine(Note, Stale, Who.Count, Agenda.Count);
+}
 
 /// <summary>A thread on the Email tab.</summary>
 /// <param name="Staleness">0 recent, 1 over a month, 2 over three months: the age chip's emphasis.</param>
