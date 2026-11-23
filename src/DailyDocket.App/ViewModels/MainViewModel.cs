@@ -59,18 +59,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _log = log;
         Todos = todos;
 
-        MailCompose.Queued += item =>
+        MailCompose.Queued += _ => ReloadOutbox();
+        SlackCompose.Queued += _ => ReloadOutbox();
+        _worker.Changed += changed => OnUi(() =>
         {
-            if (item.Kind == OutboxKind.EmailReply)
+            // Marked read only once the reply has gone: a reply that was held (someone wrote in the
+            // meantime) or undone must not leave the newer message looking read in Gmail.
+            if (changed is { Kind: OutboxKind.EmailReply, Status: OutboxStatus.Sent })
             {
-                QueueMarkRead(item.Target, item.SendAfter ?? DateTimeOffset.UtcNow);
+                QueueMarkRead(changed.Target, DateTimeOffset.UtcNow);
             }
 
-            ReloadOutbox();
-        };
-        SlackCompose.Queued += _ => ReloadOutbox();
-        _worker.Changed += _ => OnUi(() =>
-        {
             ReloadOutbox();
             Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
         });
@@ -286,20 +285,44 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanSuggest))]
     private async Task SuggestTaskAsync()
     {
-        if (_captureContext is not { } context)
+        if (_captureContext is not { } context || _capture is not { } asked)
         {
             return;
         }
 
+        // What the form held when Claude was asked: a field Mike changes while Claude reads is his,
+        // and a suggestion for a message he has moved away from is dropped.
+        var (title, notes, tags, due) = (CaptureTitle, CaptureNotes, CaptureTags, CaptureDue);
         IsSuggesting = true;
         CaptureNote = "Claude is reading it...";
         try
         {
             var s = await _drafter.SuggestTaskAsync(context(), Todos.KnownTags, _stop.Token);
-            CaptureTitle = s.Title;
-            CaptureNotes = s.Notes;
-            CaptureDue = s.Due?.ToDateTime(TimeOnly.MinValue);
-            CaptureTags = s.Tag ?? "";
+            if (_capture != asked || !IsCapturing)
+            {
+                return;
+            }
+
+            if (CaptureTitle == title)
+            {
+                CaptureTitle = s.Title;
+            }
+
+            if (CaptureNotes == notes)
+            {
+                CaptureNotes = s.Notes;
+            }
+
+            if (CaptureDue == due)
+            {
+                CaptureDue = s.Due?.ToDateTime(TimeOnly.MinValue);
+            }
+
+            if (CaptureTags == tags)
+            {
+                CaptureTags = s.Tag ?? "";
+            }
+
             CaptureNote = s.Due is null ? "Claude's suggestion; no deadline in the message." : "Claude's suggestion; check the date.";
         }
         catch (InvalidOperationException e)
@@ -330,6 +353,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _book.Add(CaptureTitle, CaptureNotes, CaptureDue is { } d ? DateOnly.FromDateTime(d) : null, Core.Todos.TodoRules.ParseTags(CaptureTags), new Core.Todos.TodoSource(c.Kind, c.Key, c.Subject));
         IsCapturing = false;
         _capture = null;
+        _captureContext = null;
         MarkHandled(c.Kind, c.Key, c.UpTo, "Added to To do and marked handled.");
     }
 
@@ -338,6 +362,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         IsCapturing = false;
         _capture = null;
+        _captureContext = null;
     }
 
     [RelayCommand]
@@ -372,6 +397,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_lastHandled is { } h)
         {
             _book.Unhandle(h.Kind, h.Key);
+            foreach (var pending in _outbox.ForTarget(h.Key).Where(i => i.Kind == OutboxKind.EmailMarkRead && i.Status == OutboxStatus.Queued))
+            {
+                _outbox.Delete(pending.Id);
+            }
         }
 
         _lastHandled = null;
@@ -463,6 +492,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // A response is not text to edit: undoing it simply takes it back.
+        if (item.Kind == OutboxKind.CalendarResponse)
+        {
+            _outbox.Delete(item.Id);
+            ReloadOutbox();
+            Reload();
+            return;
+        }
+
         Compose(item).Edit(item, Conversation(item));
         ReloadOutbox();
     }
@@ -470,7 +508,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void EditOutbox(OutboxView? view)
     {
-        if (view is not null && _outbox.Get(view.Item.Id) is { Status: OutboxStatus.Held or OutboxStatus.Failed } item)
+        if (view is not null && _outbox.Get(view.Item.Id) is { Status: OutboxStatus.Held or OutboxStatus.Failed, Kind: not OutboxKind.CalendarResponse } item)
         {
             Compose(item).Edit(item, Conversation(item));
             ReloadOutbox();
@@ -512,10 +550,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private ComposeViewModel Compose(OutboxItem item) => item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose;
+    private ComposeViewModel Compose(OutboxItem item) => item.Kind == OutboxKind.SlackReply ? SlackCompose : MailCompose;
 
     private Func<string> Conversation(OutboxItem item) =>
-        item.Kind == OutboxKind.EmailReply ? () => MailConversation(item.Target) : () => SlackConversation(item.Target);
+        item.Kind == OutboxKind.SlackReply ? () => SlackConversation(item.Target) : () => MailConversation(item.Target);
 
     /// <summary>The thread for a draft, oldest first: each message's new text, without the quoted history it repeats.</summary>
     private string MailConversation(string threadId)
@@ -600,7 +638,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             OutboxStatus.Failed => notDone,
             _ => i.Status.ToString(),
         };
-        return new OutboxView(i, status, i.Problem, i.Status == OutboxStatus.Queued, i.Status is OutboxStatus.Held or OutboxStatus.Failed);
+        return new OutboxView(i, status, i.Problem, i.Status == OutboxStatus.Queued, i.Status is OutboxStatus.Held or OutboxStatus.Failed, i.Kind != OutboxKind.CalendarResponse);
     }
 
     private static string Capitalized(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
@@ -628,7 +666,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        foreach (var waiting in _outbox.ForTarget(e.EventId).Where(i => i.Kind == OutboxKind.CalendarResponse && i.Status == OutboxStatus.Queued))
+        foreach (var waiting in _outbox.ForTarget(e.EventId).Where(i => i.Kind == OutboxKind.CalendarResponse && i.Status is OutboxStatus.Queued or OutboxStatus.Held or OutboxStatus.Failed))
         {
             _outbox.Delete(waiting.Id);
         }
@@ -785,8 +823,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 !s.Calendar.Primary,
                 s.Event.HtmlLink,
                 s.Event.EventId,
-                s.Calendar.Id,
-                s.Event.MyResponse is not null,
+                null,
+                s.Event.MyResponse is not null && s.Calendar.Id is null,
                 Response(s.Event)))])).ToList();
         Swap(Days, days, d => d);
         var meetings = days.Sum(d => d.Events.Count);

@@ -52,6 +52,13 @@ public sealed class OutboxWorker
     {
         foreach (var item in _store.WithStatus(OutboxStatus.Sending))
         {
+            // Marking a thread read can safely happen twice, so it simply goes again.
+            if (OutboxRules.IsHousekeeping(item.Kind))
+            {
+                Update(item with { Status = OutboxStatus.Queued, SendAfter = DateTimeOffset.UtcNow });
+                continue;
+            }
+
             Update(item with
             {
                 Status = OutboxStatus.Held,
@@ -158,6 +165,15 @@ public sealed class OutboxWorker
         {
             Update(item with { Status = OutboxStatus.Sent, RemoteId = OutboxRules.RemoteId(result) ?? "sent", Problem = null });
             _log.LogInformation("Outbox item {Id} sent", item.Id);
+            return;
+        }
+
+        // Housekeeping Mike never sees (marking read) is dropped rather than held where nothing
+        // shows it: the next reply or Handled marks the thread read again.
+        if (OutboxRules.IsHousekeeping(item.Kind))
+        {
+            _store.Delete(item.Id);
+            _log.LogInformation("Outbox item {Id} ({Kind}) not confirmed; dropped", item.Id, item.Kind);
             return;
         }
 

@@ -145,7 +145,8 @@ public sealed partial class ComposeViewModel : ObservableObject
         SaveCurrent();
         _conversation = conversation;
         DraftWithClaudeCommand.NotifyCanExecuteChanged();
-        _item = item with { Status = OutboxStatus.Draft, SendAfter = null, Problem = null };
+        // A Gmail draft reopened here becomes a reply again: this box sends replies.
+        _item = item with { Kind = Kind, Status = OutboxStatus.Draft, SendAfter = null, Problem = null };
         _outbox.Save(_item);
         Reset(To, _item.To);
         Reset(Cc, _item.Cc);

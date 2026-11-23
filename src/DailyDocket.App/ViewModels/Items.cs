@@ -24,9 +24,13 @@ public sealed record MailItem(string Key, string From, string Age, int Staleness
 public sealed record MessageView(string From, string When, string Recipients, string Text, string? Quoted, bool IsMine);
 
 /// <summary>A reply on its way out, shown under the conversation it answers.</summary>
-public sealed record OutboxView(DailyDocket.Core.Outbox.OutboxItem Item, string Status, string? Problem, bool CanUndo, bool CanRetry)
+/// <param name="CanEdit">Written text can be reopened for editing; a calendar response cannot.</param>
+public sealed record OutboxView(DailyDocket.Core.Outbox.OutboxItem Item, string Status, string? Problem, bool CanUndo, bool CanRetry, bool CanEdit = true)
 {
     public string Preview => Item.Text.Length > 140 ? Item.Text[..140] + "…" : Item.Text;
+
+    /// <summary>Edit shows for a held or failed item that is written text.</summary>
+    public bool CanEditNow => CanRetry && CanEdit;
 }
 
 /// <summary>A conversation on the Slack tab.</summary>

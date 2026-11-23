@@ -69,7 +69,7 @@
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
-                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Visibility="{Binding CanEditNow, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
@@ -316,7 +316,7 @@
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
-                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Visibility="{Binding CanEditNow, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
@@ -456,7 +456,7 @@
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
-                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Visibility="{Binding CanEditNow, Converter={StaticResource BoolToVisibility}}"
                                                         Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                 <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
                                                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"

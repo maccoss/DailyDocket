@@ -301,7 +301,10 @@ The to-dos and Handled marks live in `maccoss/DailyDocket-Data` as designed: `to
 - **Email replies always pass explicit `to` and `cc`** (the person answered, or everyone else on the newest message for Reply all, never Mike), so what the guard checks is what he saw. `includeSignature` follows the setting (default on).
 - **The outbox is schema version 2**, added to an existing cache without dropping it; a database from a newer version is refused rather than dropped. Unsent items are mirrored to `outbox.json`.
 - **Draft with Claude** runs Sonnet with no tools at all, the conversation and a few of his recent sent emails in the prompt, and an optional line of guidance ("Say"). Without guidance it must not decide for him: a reply that turns on a decision is written around a bracketed choice. A house-style filter removes em dashes. About $0.08 to $0.29 a draft on skiddaw.
-- **Not yet:** calendar RSVPs and new events through the outbox, Save to Gmail drafts, the offline local model (Foundry Local), Claude drafting the To do capture, and the in:sent check for an interrupted send (it is held for Mike instead).
+- **Added the night of November 22:** Accept, Maybe and Decline on events from his own calendar (on a shared calendar the attendee "self" is that calendar, so responses are offered only where it is him), behind the undo window, a new choice replacing any earlier unsent one; Save to Gmail drafts from the reply box; Claude drafting the To do capture (the artifact's brief, no tools).
+- **Marking threads read in Gmail (decided November 22):** Gmail kept showing mail already handled in the app as unread, so a thread is marked read (`unlabel_thread` UNREAD, through the guarded outbox) when Mike presses Handled, and when a reply of his has actually been sent: never when it is queued, held or undone, so a message that arrived in the meantime is not hidden. A setting (`MarkReadInGmail`) turns it off; it is housekeeping, so a failed one is dropped, not shown.
+- **A send that cannot be confirmed is held**, never marked failed: only a guard refusal proves nothing went out.
+- **Not yet:** creating or moving events, the offline local model (Foundry Local), and the in:sent check for an interrupted send (it is held for Mike instead).
 
 ## Open decisions
 
