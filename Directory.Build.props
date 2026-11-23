@@ -1,0 +1,45 @@
+<Project>
+
+  <!--
+    Single source of truth for the product version.
+
+    CalVer, YY.feature.patch, the same convention as LabOps and PanoramaBridge:
+      YY       two-digit year (26 = 2026)
+      feature  incremented for each release containing new features, restarting each year
+      patch    incremented for bug-fix-only releases within the same feature version
+
+    This value and the git tag must match: release.yml will refuse to publish when tag
+    v<version> disagrees with this property. Bump it here, commit, then tag. It is bumped only at
+    release time; see release-notes/README.md.
+  -->
+  <PropertyGroup>
+    <Version>26.0.0</Version>
+    <Product>DailyDocket</Product>
+    <Company>MacCoss Lab, University of Washington</Company>
+    <Authors>Michael MacCoss</Authors>
+    <Copyright>Copyright (c) Michael MacCoss</Copyright>
+    <RepositoryUrl>https://github.com/maccoss/DailyDocket</RepositoryUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      InvariantGlobalization must stay off: WPF data binding calls
+      XmlLanguage.GetSpecificCulture(), which throws without real ICU culture data.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- Deterministic builds in CI -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

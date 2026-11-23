@@ -1,0 +1,163 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace DailyDocket.Hook;
+
+/// <summary>PostToolUse: keep the raw result, optionally hand Claude a receipt instead.</summary>
+internal static class Capture
+{
+    // Keys whose values the model needs to keep paging or to ask for one item.
+    private static readonly HashSet<string> IdKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "id", "threadId", "messageId", "eventId", "ts", "thread_ts", "channel", "channel_id",
+    };
+
+    private static readonly HashSet<string> PagingKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "nextPageToken", "next_page_token", "next_cursor", "nextCursor", "cursor", "resultSizeEstimate",
+    };
+
+    private const int MaxIds = 60;
+
+    /// <summary>Saves <paramref name="input"/> and returns the hook's stdout, or null for none.</summary>
+    public static string? Run(string input, string directory, bool receipt, DateTimeOffset now)
+    {
+        var node = JsonNode.Parse(input) ?? throw new JsonException("The hook input is empty.");
+        var toolUseId = node["tool_use_id"]?.GetValue<string>() ?? Guid.NewGuid().ToString("N");
+
+        Directory.CreateDirectory(directory);
+        var name = $"{now:yyyyMMdd'T'HHmmssfff}-{Sanitize(toolUseId)}.json";
+        var path = Path.Combine(directory, name);
+        var temp = path + ".tmp";
+
+        // Verbatim: the parsers are tested against exactly what the connector returned.
+        File.WriteAllText(temp, input, new UTF8Encoding(false));
+        File.Move(temp, path, overwrite: true);
+
+        if (!receipt)
+        {
+            return null;
+        }
+
+        var response = node["tool_response"];
+        var text = Receipt(node["tool_name"]?.GetValue<string>() ?? "?", response, input.Length);
+        var output = new JsonObject
+        {
+            ["hookSpecificOutput"] = new JsonObject
+            {
+                ["hookEventName"] = "PostToolUse",
+                ["updatedToolOutput"] = Shaped(response, text),
+            },
+        };
+        return output.ToJsonString();
+    }
+
+    /// <summary>The receipt text: what was captured, and the ids and paging tokens in it.</summary>
+    internal static string Receipt(string toolName, JsonNode? response, int length)
+    {
+        var ids = new List<string>();
+        var paging = new Dictionary<string, string>(StringComparer.Ordinal);
+        Walk(response, ids, paging, depth: 0);
+
+        var sb = new StringBuilder();
+        sb.Append($"DailyDocket saved this {toolName} result ({length:N0} characters) for the app; its text is not shown to you.");
+        if (paging.Count > 0)
+        {
+            sb.Append(" Paging: ").Append(string.Join(", ", paging.Select(p => $"{p.Key}={p.Value}"))).Append('.');
+        }
+
+        if (ids.Count > 0)
+        {
+            sb.Append($" Ids ({ids.Count}{(ids.Count >= MaxIds ? "+" : "")}): ").Append(string.Join(", ", ids)).Append('.');
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The receipt in the same outer shape as the original result. Claude Code does not validate an
+    /// MCP tool's replacement output, but a familiar shape (content blocks, or a string) keeps the
+    /// model from treating the receipt as a malformed answer.
+    /// </summary>
+    internal static JsonNode Shaped(JsonNode? original, string text)
+    {
+        JsonObject Block() => new() { ["type"] = "text", ["text"] = text };
+        return original switch
+        {
+            JsonArray => new JsonArray(Block()),
+            JsonObject o when o["content"] is JsonArray => new JsonObject { ["content"] = new JsonArray(Block()) },
+            _ => JsonValue.Create(text),
+        };
+    }
+
+    private static void Walk(JsonNode? node, List<string> ids, Dictionary<string, string> paging, int depth)
+    {
+        if (node is null || depth > 12)
+        {
+            return;
+        }
+
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (key, value) in obj)
+                {
+                    if (value is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrEmpty(s))
+                    {
+                        if (PagingKeys.Contains(key))
+                        {
+                            paging[key] = s;
+                            continue;
+                        }
+
+                        if (IdKeys.Contains(key) && ids.Count < MaxIds && !ids.Contains(s) && s.Length <= 64)
+                        {
+                            ids.Add(s);
+                            continue;
+                        }
+                    }
+                    else if (value is JsonValue n && PagingKeys.Contains(key))
+                    {
+                        paging[key] = n.ToJsonString();
+                        continue;
+                    }
+
+                    Walk(value, ids, paging, depth + 1);
+                }
+
+                break;
+
+            case JsonArray array:
+                foreach (var item in array)
+                {
+                    Walk(item, ids, paging, depth + 1);
+                }
+
+                break;
+
+            case JsonValue value when value.TryGetValue<string>(out var str):
+                // MCP text blocks often carry JSON as a string; look inside it too.
+                var trimmed = str.TrimStart();
+                if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+                {
+                    try
+                    {
+                        Walk(JsonNode.Parse(str), ids, paging, depth + 1);
+                    }
+                    catch (JsonException)
+                    {
+                        // Plain text that happens to start with a brace.
+                    }
+                }
+
+                break;
+        }
+    }
+
+    private static string Sanitize(string value)
+    {
+        var chars = value.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_').ToArray();
+        return new string(chars, 0, Math.Min(chars.Length, 80));
+    }
+}
