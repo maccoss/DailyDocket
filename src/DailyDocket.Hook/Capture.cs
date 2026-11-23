@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace DailyDocket.Hook;
 
 /// <summary>PostToolUse: keep the raw result, optionally hand Claude a receipt instead.</summary>
-internal static class Capture
+internal static partial class Capture
 {
     // Keys whose values the model needs to keep paging or to ask for one item.
     private static readonly HashSet<string> IdKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -57,14 +57,14 @@ internal static class Capture
     internal static string Receipt(string toolName, JsonNode? response, int length)
     {
         var ids = new List<string>();
-        var paging = new Dictionary<string, string>(StringComparer.Ordinal);
+        var paging = new Dictionary<string, (string Value, int Depth)>(StringComparer.Ordinal);
         Walk(response, ids, paging, depth: 0);
 
         var sb = new StringBuilder();
         sb.Append($"DailyDocket saved this {toolName} result ({length:N0} characters) for the app; its text is not shown to you.");
         if (paging.Count > 0)
         {
-            sb.Append(" Paging: ").Append(string.Join(", ", paging.Select(p => $"{p.Key}={p.Value}"))).Append('.');
+            sb.Append(" Paging: ").Append(string.Join(", ", paging.Select(p => $"{p.Key}={p.Value.Value}"))).Append('.');
         }
 
         if (ids.Count > 0)
@@ -91,7 +91,22 @@ internal static class Capture
         };
     }
 
-    private static void Walk(JsonNode? node, List<string> ids, Dictionary<string, string> paging, int depth)
+    /// <summary>
+    /// The receipt is the one place a reading run sees text that came from outside, so only values
+    /// shaped like tokens get into it: a subject or snippet that happens to be JSON (which the walk
+    /// below parses, since MCP text blocks carry JSON as strings) cannot put sentences in front of
+    /// the model. Where the same paging key appears twice, the shallower one wins, so a key planted
+    /// inside a message cannot replace the connector's own page token.
+    /// </summary>
+    private static void SetPaging(Dictionary<string, (string Value, int Depth)> paging, string key, string value, int depth)
+    {
+        if (Token().IsMatch(value) && (!paging.TryGetValue(key, out var existing) || depth < existing.Depth))
+        {
+            paging[key] = (value, depth);
+        }
+    }
+
+    private static void Walk(JsonNode? node, List<string> ids, Dictionary<string, (string Value, int Depth)> paging, int depth)
     {
         if (node is null || depth > 12)
         {
@@ -105,13 +120,20 @@ internal static class Capture
                 {
                     if (value is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrEmpty(s))
                     {
-                        if (PagingKeys.Contains(key))
+                        // Slack's cursor is prose, not a field: "use cursor `<token>`".
+                        if (key == "pagination_info" && SlackCursor().Match(s) is { Success: true } cursor)
                         {
-                            paging[key] = s;
+                            SetPaging(paging, "cursor", cursor.Groups[1].Value, depth);
                             continue;
                         }
 
-                        if (IdKeys.Contains(key) && ids.Count < MaxIds && !ids.Contains(s) && s.Length <= 64)
+                        if (PagingKeys.Contains(key))
+                        {
+                            SetPaging(paging, key, s, depth);
+                            continue;
+                        }
+
+                        if (IdKeys.Contains(key) && ids.Count < MaxIds && !ids.Contains(s) && s.Length <= 64 && Token().IsMatch(s))
                         {
                             ids.Add(s);
                             continue;
@@ -119,7 +141,7 @@ internal static class Capture
                     }
                     else if (value is JsonValue n && PagingKeys.Contains(key))
                     {
-                        paging[key] = n.ToJsonString();
+                        SetPaging(paging, key, n.ToJsonString(), depth);
                         continue;
                     }
 
@@ -150,10 +172,58 @@ internal static class Capture
                         // Plain text that happens to start with a brace.
                     }
                 }
+                else
+                {
+                    SlackIds(str, ids);
+                }
 
                 break;
         }
     }
+
+    /// <summary>
+    /// Slack answers with a labeled text report, not JSON, so its ids are read from the labels:
+    /// each result becomes channel:ts (plus :thread_ts when it is in a thread), which is what a
+    /// run needs to read that thread or its reactions next.
+    /// </summary>
+    internal static void SlackIds(string text, List<string> ids)
+    {
+        foreach (var block in SlackResult().Split(text).Skip(1))
+        {
+            var channel = SlackChannel().Match(block);
+            var ts = SlackTs().Match(block);
+            if (!channel.Success || !ts.Success || ids.Count >= MaxIds)
+            {
+                continue;
+            }
+
+            var thread = SlackThread().Match(block);
+            var id = $"{channel.Groups[1].Value}:{ts.Groups[1].Value}" + (thread.Success ? $":{thread.Groups[1].Value}" : "");
+            if (!ids.Contains(id))
+            {
+                ids.Add(id);
+            }
+        }
+    }
+
+    /// <summary>A page token or id: base64url and the punctuation ids use, no spaces, not too long.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9_\-.:=+/@]{1,200}$")]
+    private static partial System.Text.RegularExpressions.Regex Token();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"cursor[^`]*`([^`]+)`")]
+    private static partial System.Text.RegularExpressions.Regex SlackCursor();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"###\s+Result\s+\d+\s+of\s+\d+")]
+    private static partial System.Text.RegularExpressions.Regex SlackResult();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Channel:[^\n]*\(ID:\s*([A-Z0-9]+)\)")]
+    private static partial System.Text.RegularExpressions.Regex SlackChannel();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Message_ts:\s*([\d.]+)")]
+    private static partial System.Text.RegularExpressions.Regex SlackTs();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"thread_ts=([\d.]+)")]
+    private static partial System.Text.RegularExpressions.Regex SlackThread();
 
     private static string Sanitize(string value)
     {

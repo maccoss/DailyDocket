@@ -1,0 +1,2 @@
+# Test fixtures are connector results byte for byte, which use LF; a CRLF checkout would change them.
+src/DailyDocket.Tests/Fixtures/** text eol=lf

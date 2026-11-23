@@ -21,7 +21,7 @@
   pwsh spike\run-spike.ps1 -Step capture
 #>
 param(
-    [ValidateSet('all', 'tools', 'capture', 'guard', 'arch')]
+    [ValidateSet('all', 'tools', 'capture', 'guard', 'arch', 'shapes')]
     [string]$Step = 'all',
     [string]$Model = 'haiku'
 )
@@ -153,6 +153,34 @@ if ($Step -in 'all', 'guard') {
         $byGuard = ($toolResults | ConvertTo-Json -Depth 10) -match 'DailyDocket send guard'
         Note "  denied by the guard hook (not just the allowlist): $byGuard"
     }
+}
+
+if ($Step -eq 'shapes') {
+    # Not part of 'all': captures every read call the pull jobs make, with the artifact's exact
+    # arguments, so the C# parsers are written against real shapes. Only the shapes (keys and
+    # types) are ever copied into the repo; the captures stay here.
+    Note "== shapes: one capture per pull-job read call"
+    $hook = Find-Hook
+    $cap = (Join-Path $out 'shapes\captures') -replace '\\', '/'
+    $settings = Join-Path $out 'shapes.settings.json'
+    Write-Settings $settings @{ PostToolUse = @(@{ matcher = 'mcp__claude_ai_.*'; hooks = @(@{ type = 'command'; command = "`"$hook`" capture --dir `"$cap`" --receipt"; timeout = 30 }) }) }
+    $g = 'mcp__claude_ai_Gmail__'; $s = 'mcp__claude_ai_Slack__'
+    $after = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd')
+    $calls = @(
+        "$($g)search_threads with {`"query`":`"in:inbox newer_than:3d`",`"pageSize`":5,`"view`":`"THREAD_VIEW_MINIMAL`"}",
+        "$($g)search_threads with {`"query`":`"in:sent newer_than:3d`",`"pageSize`":5,`"view`":`"THREAD_VIEW_METADATA_ONLY`"}",
+        "$($g)list_drafts with {`"pageSize`":5,`"view`":`"DRAFT_VIEW_METADATA_ONLY`"}",
+        "$($g)get_thread with {`"threadId`":<the first thread id from the first search>,`"messageFormat`":`"METADATA_ONLY`"}",
+        "$($g)get_thread with {`"threadId`":<the same id>,`"messageFormat`":`"PLAIN_TEXT`"}",
+        "$($s)slack_search_public_and_private with {`"filters`":`"after:$after`",`"channel_types`":`"im,mpim`",`"natural_language_query`":`"`",`"sort`":`"timestamp`",`"sort_dir`":`"desc`",`"limit`":5,`"include_context`":false,`"response_format`":`"detailed`"}",
+        "$($s)slack_read_thread with {`"channel_id`":<a channel id from that search>,`"message_ts`":<that message's Message_ts>,`"limit`":10,`"response_format`":`"detailed`"}",
+        "$($s)slack_get_reactions with {`"channel_id`":<the same channel id>,`"message_ts`":<the same Message_ts>}"
+    )
+    $tools = (@('ToolSearch') + @($calls | ForEach-Object { ($_ -split ' ')[0] }) | Sort-Object -Unique) -join ','
+    $prompt = "Make these tool calls in order, each exactly once, with exactly these arguments (fill each <...> from earlier results; the results you see are receipts that list ids). Load tools with ToolSearch first. Then reply DONE.`n" + ($calls -join "`n")
+    $null = Invoke-Claude 'shapes' $prompt @('--settings', $settings, '--allowedTools', $tools, '--max-turns', '20')
+    $files = @(Get-ChildItem $cap -Filter *.json -ErrorAction SilentlyContinue)
+    Note "  captures written: $($files.Count) ($(($files | ForEach-Object { ((Get-Content $_.FullName -Raw | ConvertFrom-Json).tool_name -split '__')[-1] }) -join ', '))"
 }
 
 if ($Step -in 'all', 'arch') {

@@ -35,6 +35,21 @@ public static class AppInfo
     public static string RuntimeIdentifier { get; } =
         $"win-{RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}";
 
+    /// <summary>The Velopack channel this copy reads: its own runtime's, or that runtime's beta.</summary>
+    public static string UpdateChannel(bool beta) => UpdateChannelFor(RuntimeIdentifier, beta);
+
+    /// <summary>
+    /// The channel for <paramref name="runtimeIdentifier"/>: <c>win-x64</c>, <c>win-arm64</c>, or
+    /// either with <c>-beta</c>. release.yml packs each runtime under the same names, so the two
+    /// must change together.
+    /// </summary>
+    /// <remarks>
+    /// LabOps uses <c>stable</c> and <c>beta</c>, but it ships one runtime. With two in one release,
+    /// a shared channel would let Velopack hand an ARM64 computer whichever package it read first.
+    /// </remarks>
+    public static string UpdateChannelFor(string runtimeIdentifier, bool beta) =>
+        beta ? $"{runtimeIdentifier}-beta" : runtimeIdentifier;
+
     /// <summary>The machine's name as the repository records it (updatedOn, the job lease).</summary>
     public static string MachineName { get; } = Environment.MachineName.ToLowerInvariant();
 

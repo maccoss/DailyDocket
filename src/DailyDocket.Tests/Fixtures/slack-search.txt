@@ -1,0 +1,47 @@
+# Search Results for:
+
+## Messages (4 results)
+### Result 1 of 4
+Channel: DM (ID: D0000000001)
+Participants: Pat Example (ID: U0000000002), Owner Person (ID: U0000000001)
+From: Pat Example <pat@example.org> (ID: U0000000002)
+Time: 2026-11-21 09:15:02 PST
+Message_ts: 1795878902.000100
+Permalink: [link](https://example.slack.com/archives/D0000000001/p1795878902000100)
+Text:
+Could you send the QC report for the plasma batch by Friday?
+---
+### Result 2 of 4
+Channel: lab-instruments (ID: C0000000003)
+Participants: Sam Sample (ID: U0000000004), Owner Person (ID: U0000000001)
+From: Sam Sample <sam@example.org> (ID: U0000000004)
+Time: 2026-11-21 10:00:00 PST
+Message_ts: 1795881600.000200
+Reply count: 3
+Permalink: [link](https://example.slack.com/archives/C0000000003/p1795881600000200?thread_ts=1795880000.000050&cid=C0000000003)
+Text:
+<@U0000000001|Owner Person> the column pressure is high again, swap it or keep running?
+Context after:
+- From: Lee Lab <lee@example.org> (ID: U0000000005)
+  Message_ts: 1795881700.000300
+  I can look at it this afternoon.
+---
+### Result 3 of 4
+Channel: DM (ID: D0000000001)
+Participants: Pat Example (ID: U0000000002), Owner Person (ID: U0000000001)
+From: Owner Person <owner@example.org> (ID: U0000000001)
+Time: 2026-11-20 16:00:00 PST
+Message_ts: 1795795200.000400
+Permalink: [link](https://example.slack.com/archives/D0000000001/p1795795200000400)
+Text:
+Thanks, got it.
+---
+### Result 4 of 4
+Channel: general (ID: C0000000006)
+Participants: Robo App (ID: B0000000007)
+From:  (ID: B0000000007)
+Time: 2026-11-19 08:00:00 PST
+Message_ts: 1795708800.000500
+Permalink: [link](https://example.slack.com/archives/C0000000006/p1795708800000500)
+Text:
+Nightly backup finished.

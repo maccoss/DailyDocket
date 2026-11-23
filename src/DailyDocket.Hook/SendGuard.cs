@@ -19,8 +19,13 @@ namespace DailyDocket.Hook;
 /// </remarks>
 internal static class SendGuard
 {
-    /// <summary>The hook's stdout: null to let the call continue to the normal permission check, else a deny.</summary>
-    public static string? Decide(string input, string claimsPath)
+    /// <summary>
+    /// The hook's stdout: an allow for a claimed call, else a deny. The send tool is deliberately not
+    /// on the run's allowlist, so only this allow lets it run: if the guard crashes, times out or
+    /// cannot start (which Claude Code treats as non-blocking), permission mode dontAsk refuses the
+    /// call instead of letting it through unchecked.
+    /// </summary>
+    public static string Decide(string input, string claimsPath)
     {
         var call = JsonNode.Parse(input) ?? throw new JsonException("The hook input is empty.");
         var toolName = call["tool_name"]?.GetValue<string>() ?? throw new JsonException("The hook input has no tool_name.");
@@ -33,10 +38,6 @@ internal static class SendGuard
 
         var claims = JsonNode.Parse(File.ReadAllText(claimsPath)) as JsonArray
             ?? throw new JsonException("The claims file is not a JSON array.");
-        var usedPath = claimsPath + ".used";
-        var used = File.Exists(usedPath)
-            ? File.ReadAllLines(usedPath).ToHashSet(StringComparer.Ordinal)
-            : [];
 
         foreach (var claim in claims.OfType<JsonObject>())
         {
@@ -48,13 +49,21 @@ internal static class SendGuard
                 continue;
             }
 
-            if (used.Contains(id))
+            // Claude Code runs the hooks of parallel tool calls at the same time, so reading a list
+            // of used ids and appending later would let two identical calls both pass. Creating the
+            // marker file is the claim: the file system lets exactly one CreateNew succeed.
+            try
+            {
+                using (new FileStream(UsedMarker(claimsPath, id), FileMode.CreateNew, FileAccess.Write))
+                {
+                }
+            }
+            catch (IOException) when (File.Exists(UsedMarker(claimsPath, id)))
             {
                 return Deny($"outbox item {id} has already been sent in this run.");
             }
 
-            File.AppendAllLines(usedPath, [id]);
-            return null;
+            return Allow();
         }
 
         return Deny($"this {toolName} call does not match any claimed outbox item exactly "
@@ -73,6 +82,22 @@ internal static class SendGuard
         null => null,
         _ => node.DeepClone(),
     };
+
+    /// <summary>
+    /// The marker that an outbox item's call was let through. The id is hashed so whatever it holds
+    /// cannot make a path; the app looks for any <c>claims.json.used.*</c> to know a call went ahead.
+    /// </summary>
+    internal static string UsedMarker(string claimsPath, string id) => $"{claimsPath}.used.{Hash(id)}";
+
+    private static string Allow() => new JsonObject
+    {
+        ["hookSpecificOutput"] = new JsonObject
+        {
+            ["hookEventName"] = "PreToolUse",
+            ["permissionDecision"] = "allow",
+            ["permissionDecisionReason"] = "DailyDocket send guard: matches a claimed outbox item.",
+        },
+    }.ToJsonString();
 
     private static string Deny(string reason) => new JsonObject
     {

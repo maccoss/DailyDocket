@@ -11,6 +11,15 @@ public sealed class AppSettings
     /// <summary>Folder holding the clone of the private to-do repository; null uses the default under the data folder.</summary>
     public string? TodoRepositoryPath { get; set; }
 
+    /// <summary>The private data repository (to-dos, Handled marks, docket.yaml) to clone; empty means none yet.</summary>
+    public string DataRepositoryUrl { get; set; } = "https://github.com/maccoss/DailyDocket-Data.git";
+
+    /// <summary>Whether email replies end with the Gmail signature set up on the web, as replies written in Gmail do.</summary>
+    public bool IncludeSignature { get; set; } = true;
+
+    /// <summary>Mark a Gmail thread read when Mike replies to it or marks it handled in the app.</summary>
+    public bool MarkReadInGmail { get; set; } = true;
+
     /// <summary>
     /// Claude Code session per key, so "continue" picks up a drafting conversation (keyed by
     /// <c>email:</c> plus the thread id, or <c>slack:</c> plus the conversation key).
@@ -34,6 +43,12 @@ public sealed class AppSettings
 
     /// <summary>Use the beta update channel (for trying a release before everyone gets it).</summary>
     public bool BetaUpdates { get; set; }
+
+    /// <summary>A Windows notification when something new needs Mike: an owed email or Slack conversation, or a held or failed reply.</summary>
+    public bool Notifications { get; set; } = true;
+
+    /// <summary>Minimizing hides the window to the notification area, where DailyDocket keeps syncing.</summary>
+    public bool MinimizeToTray { get; set; } = true;
 
     public double? WindowWidth { get; set; }
 

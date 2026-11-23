@@ -44,6 +44,28 @@ public sealed record ClaudeSessionOptions
     /// </summary>
     public string? SettingsPath { get; init; }
 
+    /// <summary>
+    /// Which settings files Claude Code loads besides <see cref="SettingsPath"/>. "local" reads only
+    /// the run folder's own (it has none), so the owner's ~/.claude settings and hooks never apply
+    /// to a DailyDocket run.
+    /// </summary>
+    public string? SettingSources { get; init; }
+
+    /// <summary>A ceiling on a run's turns, so a confused run cannot go on calling tools.</summary>
+    public int? MaxTurns { get; init; }
+
+    /// <summary>
+    /// Keep no transcript under ~/.claude/projects. A run's transcript holds the mail it read, in
+    /// plain text outside the encrypted database, and nothing ever resumes a run.
+    /// </summary>
+    public bool NoSessionPersistence { get; init; }
+
+    /// <summary>
+    /// Replaces Claude Code's own system prompt (written for coding sessions, and long). A run
+    /// that judges one conversation pays for that prompt every time; its own short one is enough.
+    /// </summary>
+    public string? SystemPrompt { get; init; }
+
     public IReadOnlyDictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
 
     /// <summary>The command line, built in one place so a test can check it.</summary>
@@ -106,6 +128,26 @@ public sealed record ClaudeSessionOptions
         if (SettingsPath is not null)
         {
             args.AddRange(["--settings", SettingsPath]);
+        }
+
+        if (SettingSources is not null)
+        {
+            args.AddRange(["--setting-sources", SettingSources]);
+        }
+
+        if (MaxTurns is { } turns)
+        {
+            args.AddRange(["--max-turns", turns.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+        }
+
+        if (SystemPrompt is not null)
+        {
+            args.AddRange(["--system-prompt", SystemPrompt]);
+        }
+
+        if (NoSessionPersistence)
+        {
+            args.Add("--no-session-persistence");
         }
 
         return args;

@@ -26,6 +26,17 @@ public sealed class SendGuardTests : IDisposable
     private static string Call(string tool, string input) =>
         new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = tool, ["tool_input"] = JsonNode.Parse(input) }.ToJsonString();
 
+    [Fact]
+    public void Parallel_identical_calls_let_only_one_through()
+    {
+        var claims = Claims(("o1", Tool, """{"threadId":"t1","body":"Hi"}"""));
+        var decisions = Enumerable.Range(0, 16).AsParallel()
+            .Select(_ => SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Hi"}"""), claims))
+            .ToList();
+
+        decisions.Count(d => d.Contains("\"allow\"")).ShouldBe(1);
+    }
+
     private static void ShouldDeny(string? decision, string because)
     {
         decision.ShouldNotBeNull();
@@ -35,17 +46,17 @@ public sealed class SendGuardTests : IDisposable
     }
 
     [Fact]
-    public void An_exact_claimed_call_continues_to_the_normal_permission_check()
+    public void An_exact_claimed_call_is_allowed_explicitly()
     {
         var claims = Claims(("o1", Tool, """{"threadId":"t1","body":"Thanks, will do."}"""));
-        SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Thanks, will do."}"""), claims).ShouldBeNull();
+        SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Thanks, will do."}"""), claims).ShouldContain("\"allow\"");
     }
 
     [Fact]
     public void Key_order_does_not_matter()
     {
         var claims = Claims(("o1", Tool, """{"threadId":"t1","body":"Hi"}"""));
-        SendGuard.Decide(Call(Tool, """{"body":"Hi","threadId":"t1"}"""), claims).ShouldBeNull();
+        SendGuard.Decide(Call(Tool, """{"body":"Hi","threadId":"t1"}"""), claims).ShouldContain("\"allow\"");
     }
 
     [Theory]
@@ -70,7 +81,7 @@ public sealed class SendGuardTests : IDisposable
     public void A_claim_is_used_once()
     {
         var claims = Claims(("o1", Tool, """{"threadId":"t1","body":"Hi"}"""));
-        SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Hi"}"""), claims).ShouldBeNull();
+        SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Hi"}"""), claims).ShouldContain("\"allow\"");
         ShouldDeny(SendGuard.Decide(Call(Tool, """{"threadId":"t1","body":"Hi"}"""), claims), "already been sent");
     }
 

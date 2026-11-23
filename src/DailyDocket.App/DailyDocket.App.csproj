@@ -1,0 +1,69 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- For the notification-area icon (NotifyIcon) only; see Services/TrayIcon.cs. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>DailyDocket.App</RootNamespace>
+    <AssemblyName>DailyDocket</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+
+    <!--
+      The app supplies its own Program.Main (as LabOps does, so Velopack can run first once updates
+      arrive), so App.xaml is a Page rather than the ApplicationDefinition (below).
+    -->
+    <StartupObject>DailyDocket.App.Program</StartupObject>
+    <!-- Velopack packs a folder publish; single-file would defeat delta updates. -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same Velopack as LabOps, so a fix found in one applies to the other. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UseWPF drops System.IO from the implicit usings (Path collides with Shapes.Path); this app draws no shapes. -->
+    <Using Include="System.IO" />
+    <!--
+      UseWindowsForms adds these to the implicit usings; their Application, MessageBox, Button and
+      Color collide with WPF's. Only TrayIcon uses Windows Forms, by an alias.
+    -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DailyDocket.Core\DailyDocket.Core.csproj" />
+    <ProjectReference Include="..\DailyDocket.Data\DailyDocket.Data.csproj" />
+    <!--
+      The hook exe goes beside the app, where JobRunner finds it. Its names (DailyDocket.Hook.*)
+      cannot collide with the app's (DailyDocket.*), the trap LabOps hit with labops/LabOps.
+      A release publishes it with Native AOT instead.
+    -->
+    <ProjectReference Include="..\DailyDocket.Hook\DailyDocket.Hook.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window's title bar icon (MainWindow.xaml); the exe's comes from ApplicationIcon. -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" SubType="Designer" Generator="MSBuild:Compile" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DailyDocket.Tests" />
+  </ItemGroup>
+
+</Project>

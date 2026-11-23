@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DailyDocket.Data</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.100" />
+    <!--
+      Pinned to the 10.0 line: Microsoft.Data.Sqlite 11 moves to SQLitePCLRaw 3, which no longer
+      ships SQLCipher, and SQLitePCLRaw.bundle_e_sqlcipher 2.1.11 is the last SQLCipher bundle (its
+      win-x64 and win-arm64 natives are both in the package). Moving off it means another SQLCipher
+      build; see docs/design.md, Security.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.15" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
+    <!-- DPAPI for outbox.json (OutboxStore.Protect). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DailyDocket.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DailyDocket.Core\DailyDocket.Core.csproj" />
+  </ItemGroup>
+
+</Project>

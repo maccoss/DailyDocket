@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <!--
-      net10.0 for now; it becomes net10.0-windows (with UseWPF) once the WPF shell exists, so the
-      shell's service container can be built in a test, as in LabOps.
-      xunit v3 test projects are executables.
+      net10.0-windows with UseWPF, so the shell's service container can be built in a test, as in
+      LabOps. xunit v3 test projects are executables.
     -->
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <OutputType>Exe</OutputType>
     <RootNamespace>DailyDocket.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
@@ -25,15 +25,19 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
+    <!-- UseWPF drops System.IO from the implicit usings; the tests draw no shapes. -->
+    <Using Include="System.IO" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\**\*" Exclude="Fixtures\**\*.cs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DailyDocket.Core\DailyDocket.Core.csproj" />
     <ProjectReference Include="..\DailyDocket.Hook\DailyDocket.Hook.csproj" />
+    <ProjectReference Include="..\DailyDocket.Data\DailyDocket.Data.csproj" />
+    <ProjectReference Include="..\DailyDocket.App\DailyDocket.App.csproj" />
   </ItemGroup>
 
 </Project>
