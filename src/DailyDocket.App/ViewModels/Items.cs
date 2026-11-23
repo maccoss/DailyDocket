@@ -33,6 +33,15 @@ public sealed record EventItem(string Time, string Title, string Tag, string Loc
     /// new item for the same event, so a day redrawn because something on it changed keeps it open.
     /// </summary>
     public bool BriefOpen { get; set; }
+
+    /// <summary>The location holds the meeting's link (a Zoom room as the location): shown as a link that joins.</summary>
+    public bool LocationJoins => JoinLink is not null && Location.Contains("https://", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The clickable link text under the title: the location when it is the link, otherwise the link
+    /// in short (host and path, no password), so a link found only in the invitation's text shows too.
+    /// </summary>
+    public string? JoinText => JoinLink is null ? null : LocationJoins ? Location : Core.Calendar.MeetingLinks.Short(JoinLink);
 }
 
 /// <summary>A meeting brief as the Schedule shows it under its event.</summary>

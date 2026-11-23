@@ -180,13 +180,35 @@
                                                                     <Border Style="{StaticResource Chip}" Background="{StaticResource WarnSoftBrush}" Visibility="{Binding NeedsReply, Converter={StaticResource BoolToVisibility}}">
                                                                         <TextBlock Text="not answered" Style="{StaticResource ChipText}" Foreground="{StaticResource WarnBrush}" />
                                                                     </Border>
-                                                                    <TextBlock Text="{Binding Location}" Style="{StaticResource Muted}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" />
+                                                                    <!-- A location that is the meeting's link joins it when clicked, like Join. -->
+                                                                    <TextBlock FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                                                <Setter Property="Text" Value="{Binding Location}" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding LocationJoins}" Value="True">
+                                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                    <TextBlock FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"
+                                                                               Margin="8,0,0,0">
+                                                                        <TextBlock.Visibility>
+                                                                            <Binding Path="JoinText" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                                        </TextBlock.Visibility>
+                                                                        <Hyperlink Command="{Binding DataContext.JoinMeetingCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding JoinLink}"
+                                                                                   Foreground="{StaticResource AccentBrush}" ToolTip="Join the meeting">
+                                                                            <Run Text="{Binding JoinText, Mode=OneWay}" />
+                                                                        </Hyperlink>
+                                                                    </TextBlock>
                                                                 </WrapPanel>
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Right">
                                                                 <Button Content="Join" HorizontalAlignment="Right" Margin="0,0,0,4" Style="{StaticResource OpenButton}"
                                                                         ToolTip="{Binding JoinLink}"
-                                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding JoinLink}">
+                                                                        Command="{Binding DataContext.JoinMeetingCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding JoinLink}">
                                                                     <Button.Visibility>
                                                                         <Binding Path="JoinLink" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
                                                                     </Button.Visibility>

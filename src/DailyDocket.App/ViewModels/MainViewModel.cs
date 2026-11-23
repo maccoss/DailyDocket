@@ -434,6 +434,34 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UndoText = null;
     }
 
+    /// <summary>
+    /// Joins a meeting: in the Zoom or Teams app when Windows has its link scheme registered, so
+    /// the click starts the meeting rather than a browser page that asks to; the https link otherwise.
+    /// </summary>
+    [RelayCommand]
+    private static void JoinMeeting(string? link)
+    {
+        if (string.IsNullOrEmpty(link))
+        {
+            return;
+        }
+
+        if (Core.Calendar.MeetingLinks.AppLink(link) is { } app && SchemeRegistered(Core.Calendar.MeetingLinks.AppScheme(link)!))
+        {
+            Process.Start(new ProcessStartInfo(app) { UseShellExecute = true });
+            return;
+        }
+
+        Open(link);
+    }
+
+    /// <summary>True when an app on this computer handles <paramref name="scheme"/> links (zoommtg, msteams).</summary>
+    private static bool SchemeRegistered(string scheme)
+    {
+        using var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(scheme);
+        return key?.GetValue("URL Protocol") is not null;
+    }
+
     [RelayCommand]
     private static void Open(string? url)
     {

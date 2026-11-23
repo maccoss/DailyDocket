@@ -95,6 +95,8 @@ public sealed class ScheduleSmokeTests
             var join = Descendants<Button>(window).Single(b => Equals(b.Content, "Join"));
             join.IsVisible.ShouldBeTrue();
             join.CommandParameter.ShouldBe("https://example.zoom.us/j/123");
+            // The location is the link: shown as a link that joins, with the same command.
+            Descendants<TextBlock>(window).ShouldContain(t => t.IsVisible && t.Inlines.OfType<System.Windows.Documents.Hyperlink>().Any(h => h.CommandParameter as string == "https://example.zoom.us/j/123"));
             join.Command.ShouldNotBeNull();
 
             // A reload (every sync step and outbox change makes one) leaves an open Brief open.
