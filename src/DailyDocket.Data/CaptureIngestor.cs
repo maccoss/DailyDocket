@@ -17,8 +17,11 @@ namespace DailyDocket.Data;
 /// </remarks>
 public sealed class CaptureIngestor
 {
-    /// <summary>Enough of each message for triage (the artifact's budget is 2400 per thread) and for reading in the app.</summary>
-    public const int BodyLimit = 8000;
+    /// <summary>
+    /// Messages are read in the app, offline, so the whole text is kept; this ceiling only stops a
+    /// pathological message (a pasted log) from bloating the cache.
+    /// </summary>
+    public const int BodyLimit = 200_000;
 
     private readonly DocketDatabase _db;
     private readonly Func<DocketConfig> _config;

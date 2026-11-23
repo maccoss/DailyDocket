@@ -108,6 +108,15 @@ public sealed class SlackTests
         SlackRules.Others(SlackParser.ParseSearch(Envelope()).Messages[0], "Owner Person").ShouldBe("Pat Example");
     }
 
+    [Theory]
+    [InlineData("Hi <@U0000000001|Owner Person>, ready?", "Hi @Owner Person, ready?")]
+    [InlineData("cc <@U0000000002>", "cc @U0000000002")]
+    [InlineData("see <#C0000000003|lab-instruments>", "see #lab-instruments")]
+    [InlineData("<https://example.org/doc|the doc> and <https://example.org>", "the doc (https://example.org/doc) and https://example.org")]
+    [InlineData("a &lt; b &amp;&amp; c", "a < b && c")]
+    public void Slack_markup_reads_as_a_person_would(string raw, string expected) =>
+        SlackRules.Readable(raw).ShouldBe(expected);
+
     [Fact]
     public void A_reaction_from_him_is_found_by_his_id()
     {

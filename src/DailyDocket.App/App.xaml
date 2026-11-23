@@ -91,23 +91,90 @@
             <Setter Property="Foreground" Value="{StaticResource Ink2Brush}" />
         </Style>
 
+        <!-- A list of cards: no system selection highlight (the card shows it), text wraps. -->
+        <Style x:Key="RowList" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
+          One message in the reader. The text is a read-only TextBox so it can be selected and copied;
+          the quoted history below a reply is folded into an expander.
+        -->
+        <DataTemplate x:Key="MessageTemplate">
+            <Border CornerRadius="8" BorderThickness="1" Padding="14,10" Margin="0,0,0,8">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource LineSoftBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                        <TextBlock Text="{Binding From}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding Recipients}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,1,0,0" />
+                    <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                             Foreground="{StaticResource InkBrush}" Padding="0" Margin="0,8,0,0" FontSize="14" />
+                    <Expander Header="Show quoted text" Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}" FontSize="12.5">
+                        <Expander.Style>
+                            <Style TargetType="Expander">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Quoted}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Expander.Style>
+                        <TextBox Text="{Binding Quoted, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                                 Foreground="{StaticResource MutedBrush}" Padding="0" Margin="0,4,0,0" FontSize="13" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!--
+          The header's weight and color are set on the header's border, not on the TabItem: the tab's
+          content inherits the TabItem's font, which made every message in the reader bold and grey.
+        -->
         <Style TargetType="TabItem">
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="Underline" BorderBrush="Transparent" BorderThickness="0,0,0,3" Padding="14,6,14,8" Margin="0,0,4,0">
+                        <Border x:Name="Underline" BorderBrush="Transparent" BorderThickness="0,0,0,3" Padding="14,6,14,8" Margin="0,0,4,0"
+                                TextElement.FontWeight="Bold" TextElement.FontSize="14" TextElement.Foreground="{StaticResource MutedBrush}">
                             <ContentPresenter ContentSource="Header" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Underline" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                                <Setter TargetName="Underline" Property="TextElement.Foreground" Value="{StaticResource InkBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                                <Setter TargetName="Underline" Property="TextElement.Foreground" Value="{StaticResource InkBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

@@ -37,7 +37,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _config = config;
         _log = log;
 
-        _scheduler.Started += () => OnUi(() => IsSyncing = true);
+        _scheduler.Started += () => OnUi(() =>
+        {
+            IsSyncing = true;
+            Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
+        });
         _scheduler.JobFinished += _ => OnUi(Reload);
         _scheduler.Finished += result => OnUi(() =>
         {
@@ -52,6 +56,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<MailItem> Mail { get; } = [];
 
     public ObservableCollection<SlackItem> Slack { get; } = [];
+
+    /// <summary>The selected thread's messages, read from the cache: no network needed.</summary>
+    public ObservableCollection<MessageView> MailReader { get; } = [];
+
+    public ObservableCollection<MessageView> SlackReader { get; } = [];
+
+    [ObservableProperty]
+    public partial MailItem? SelectedMail { get; set; }
+
+    [ObservableProperty]
+    public partial SlackItem? SelectedSlack { get; set; }
+
+    [ObservableProperty]
+    public partial string MailReaderTitle { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string SlackReaderTitle { get; set; } = "";
 
     [ObservableProperty]
     public partial string Today { get; set; } = "";
@@ -109,6 +130,76 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         }
+    }
+
+    partial void OnSelectedMailChanged(MailItem? value) => LoadMailReader(value);
+
+    partial void OnSelectedSlackChanged(SlackItem? value) => LoadSlackReader(value);
+
+    private void LoadMailReader(MailItem? item)
+    {
+        MailReader.Clear();
+        MailReaderTitle = item?.Subject ?? "";
+        if (item is null)
+        {
+            return;
+        }
+
+        var config = _config.Get();
+        var zone = _config.Zone;
+
+        // Newest first: a thread is opened to answer what came last.
+        foreach (var m in _store.ThreadMessages(item.Key).Reverse())
+        {
+            var (text, quoted) = Core.Mail.MailText.SplitQuoted(m.Body ?? m.Snippet);
+            MailReader.Add(new MessageView(
+                Core.Mail.MailRules.DisplayName(m.Sender),
+                m.Date is { } d ? TimeZoneInfo.ConvertTime(d, zone).ToString("ddd MMM d, h:mm tt", CultureInfo.InvariantCulture) : "",
+                Recipients(m.To, m.Cc),
+                text.Length > 0 ? text : "(no text)",
+                quoted,
+                config.Owner.IsMe(m.Sender)));
+        }
+    }
+
+    private void LoadSlackReader(SlackItem? item)
+    {
+        SlackReader.Clear();
+        SlackReaderTitle = item?.Where ?? "";
+        if (item is null || _store.Conversation(item.Key) is not { } conversation)
+        {
+            return;
+        }
+
+        var me = _config.Get().Owner.SlackUserId;
+        var zone = _config.Zone;
+        foreach (var m in conversation.Messages.Reverse())
+        {
+            SlackReader.Add(new MessageView(
+                m.FromId == me ? "You" : m.FromName,
+                TimeZoneInfo.ConvertTime(m.When, zone).ToString("ddd MMM d, h:mm tt", CultureInfo.InvariantCulture),
+                "",
+                m.Text.Length > 0 ? Core.Slack.SlackRules.Readable(m.Text) : "(a file or attachment)",
+                null,
+                m.FromId == me));
+        }
+    }
+
+    internal static string Recipients(IReadOnlyList<string> to, IReadOnlyList<string> cc)
+    {
+        static string Names(IEnumerable<string> list) => string.Join(", ", list.Select(Core.Mail.MailRules.DisplayName));
+        var parts = new List<string>();
+        if (to.Count > 0)
+        {
+            parts.Add("to " + Names(to));
+        }
+
+        if (cc.Count > 0)
+        {
+            parts.Add("cc " + Names(cc));
+        }
+
+        return string.Join("; ", parts);
     }
 
     private async Task RunTimerAsync()
@@ -178,7 +269,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void ReloadMail(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
-        var account = config.Owner.Account;
         var (rows, counts) = _store.MailRows(_jobs.MailSince(now));
         var items = rows.Where(r => r.State is "Owed" or "Draft").Select(r =>
         {
@@ -192,10 +282,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 r.Snippet,
                 r.Why,
                 r.State == "Draft",
-                r.Unread,
-                GmailLink(account, r.ThreadId));
+                r.Unread);
         }).ToList();
+        var selected = SelectedMail?.Key;
         Swap(Mail, items, m => m);
+        Reselect(selected, Mail, m => m.Key, SelectedMail, m => SelectedMail = m);
 
         var drafts = items.Count(i => i.IsDraft);
         var parts = new List<string> { $"{counts.Owed} waiting on you" };
@@ -222,10 +313,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             RelativeAge(now - r.When),
             now - r.When > TimeSpan.FromDays(3),
             r.IsDm ? $"DM · {r.Where}" : r.Where,
-            r.Text.Length > 300 ? r.Text[..300] + "…" : r.Text,
-            r.Why,
-            r.Permalink)).ToList();
+            Preview(Core.Slack.SlackRules.Readable(r.Text)),
+            r.Why)).ToList();
+        var selected = SelectedSlack?.Key;
         Swap(Slack, owed, s => s);
+        Reselect(selected, Slack, s => s.Key, SelectedSlack, s => SelectedSlack = s);
         var reading = rows.Count(r => r.State == "Reading");
         SlackSummary = owed.Count == 0 && reading == 0
             ? "Nothing in Slack is waiting on you."
@@ -278,6 +370,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private static string Preview(string text) => text.Length > 300 ? text[..300] + "…" : text;
+
+    /// <summary>
+    /// Keeps the conversation being read selected across a sync: the list's items are new objects,
+    /// and a list that clears takes its selection with it. A conversation that left the list (he
+    /// answered it elsewhere) closes.
+    /// </summary>
+    private static void Reselect<T>(string? key, IEnumerable<T> items, Func<T, string> keyOf, T? current, Action<T> select)
+        where T : class
+    {
+        if (key is null)
+        {
+            return;
+        }
+
+        if (items.FirstOrDefault(i => keyOf(i) == key) is { } again && !ReferenceEquals(again, current))
+        {
+            select(again);
+        }
+    }
+
     internal static string TimeRange(CalendarEvent e, TimeZoneInfo zone)
     {
         static string Short(DateTimeOffset t) =>
@@ -305,15 +418,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var hours = Round(minutes / 60.0);
         return hours < 36 ? $"{hours}h" : $"{Round(hours / 24.0)}d";
     }
-
-    /// <summary>
-    /// #all rather than #inbox so the thread still opens after it is archived; authuser picks the
-    /// right mailbox when more than one account is signed in.
-    /// </summary>
-    internal static string GmailLink(string account, string threadId) =>
-        account.Contains('@', StringComparison.Ordinal) && account.Contains('.', StringComparison.Ordinal)
-            ? $"https://mail.google.com/mail/?authuser={Uri.EscapeDataString(account)}#all/{Uri.EscapeDataString(threadId)}"
-            : $"https://mail.google.com/mail/u/0/#all/{Uri.EscapeDataString(threadId)}";
 
     private static void OnUi(Action action)
     {

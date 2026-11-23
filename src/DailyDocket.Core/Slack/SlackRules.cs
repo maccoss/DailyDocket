@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DailyDocket.Core.Slack;
 
@@ -10,8 +11,37 @@ public sealed record SlackConversation(string Key, string ChannelId, string? Thr
 }
 
 /// <summary>The dashboard artifact's Slack rules, as pure functions.</summary>
-public static class SlackRules
+public static partial class SlackRules
 {
+    /// <summary>
+    /// Slack's markup as a person would read it: &lt;@U1|Pat&gt; is @Pat, &lt;#C1|lab&gt; is #lab,
+    /// &lt;https://x|label&gt; is "label (https://x)", and a bare &lt;https://x&gt; is the address.
+    /// </summary>
+    public static string Readable(string text)
+    {
+        var t = NamedUser().Replace(text, "@$1");
+        t = BareUser().Replace(t, "@$1");
+        t = NamedChannel().Replace(t, "#$1");
+        t = LabeledLink().Replace(t, m => m.Groups[2].Value == m.Groups[1].Value ? m.Groups[1].Value : $"{m.Groups[2].Value} ({m.Groups[1].Value})");
+        t = BareLink().Replace(t, "$1");
+        return t.Replace("&lt;", "<", StringComparison.Ordinal).Replace("&gt;", ">", StringComparison.Ordinal).Replace("&amp;", "&", StringComparison.Ordinal);
+    }
+
+    [GeneratedRegex(@"<@[UWB][A-Z0-9]+\|([^>]+)>")]
+    private static partial Regex NamedUser();
+
+    [GeneratedRegex(@"<@([UWB][A-Z0-9]+)>")]
+    private static partial Regex BareUser();
+
+    [GeneratedRegex(@"<#C[A-Z0-9]+\|([^>]*)>")]
+    private static partial Regex NamedChannel();
+
+    [GeneratedRegex(@"<((?:https?|mailto):[^|>]+)\|([^>]+)>")]
+    private static partial Regex LabeledLink();
+
+    [GeneratedRegex(@"<((?:https?|mailto):[^|>]+)>")]
+    private static partial Regex BareLink();
+
     /// <summary>
     /// "~" not "/": the key becomes a file name and a database key, and a slash makes it a path.
     /// In a thread, the thread is the conversation; outside one, the channel is.

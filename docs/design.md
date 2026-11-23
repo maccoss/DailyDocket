@@ -60,6 +60,8 @@ Everything Mike writes lands in a local outbox first, online or not, and is sent
 What can be queued:
 
 - Email: reply, reply all, new message, or "save to Gmail drafts" (so an offline draft shows up on his phone and the other two machines once online).
+
+Writing a reply (phase 4, from Mike, November 2026): it is written in the app, under the thread he is reading, never by opening Gmail. The recipients start as the sender (Reply) or everyone on the thread (Reply all) and each one can be removed or added, so a reply can go to a subset of the people. The compose box has basic formatting (bold, italic, underline, bulleted and numbered lists, links), sent as `htmlBody` with a plain-text `body` alternative. The connector supports all of this: `reply` takes `messageId`, `replyAll`, explicit `to`, `cc` and `bcc` lists that override the defaults, `body` and `htmlBody`; `send_message` takes `replyThreadId` for a send that must thread. The outbox item stores the exact recipients and both bodies, and the send guard matches them exactly. Claude helps draft in phase 5 (a Draft with Claude button that fills the compose box for Mike to edit), never sending.
 - Slack: reply in a thread, or a DM.
 - Calendar: accept, decline or tentative; create or move an event.
 - Dashboard state: Handled marks and to-dos go to git instead (next section), not the outbox.
@@ -197,8 +199,10 @@ Four tabs, the same as the artifact, plus a status bar that always says whether 
 | --- | --- | --- |
 | Schedule | Week grid of the four calendars; Genome Sciences events shown quietly; clashes flagged on primary events only; each event on its own row; meeting brief under an event when one exists | Accept, decline, tentative; new event; open in Calendar |
 | To do | Open list in dragged order, or by date; tag filter; due labels (today, tomorrow, 3d late); stable tag colors | Add, edit, done, drag, recolor tag |
-| Email | Owed replies (who is waiting, Claude's one-line why), open loops (Mike promised something), unsent Gmail drafts first | Reply in app, draft with AI, To do, Handled, open in Gmail |
-| Slack | DMs and mentions awaiting Mike, grouped by conversation | Reply in thread, draft with AI, To do, Handled, open in Slack |
+| Email | Owed replies (who is waiting, Claude's one-line why), open loops (Mike promised something), unsent Gmail drafts first; the selected thread is read in full beside the list, from the cache | Reply in app (to all or chosen recipients, with basic formatting), draft with AI, To do, Handled |
+| Slack | DMs and mentions awaiting Mike, grouped by conversation; the selected conversation is read beside the list | Reply in thread, draft with AI, To do, Handled |
+
+Nothing sends Mike out to Gmail or Slack to read or answer: the app is where he reads and writes, online or not (decided November 2026).
 
 The artifact's comments record rules learned the hard way. They move into `DailyDocket.Core/Rules` as pure functions, each with a test built from a recorded capture:
 

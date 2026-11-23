@@ -48,10 +48,11 @@ public sealed class AppTests
         MainViewModel.MailAge(TimeSpan.FromDays(days)).ShouldBe(expected);
 
     [Fact]
-    public void A_gmail_link_opens_the_thread_in_the_owners_mailbox_even_after_archiving()
+    public void The_reader_names_recipients_by_display_name()
     {
-        MainViewModel.GmailLink("owner@example.org", "19a2c0f3").ShouldBe("https://mail.google.com/mail/?authuser=owner%40example.org#all/19a2c0f3");
-        MainViewModel.GmailLink("", "19a2c0f3").ShouldBe("https://mail.google.com/mail/u/0/#all/19a2c0f3");
+        MainViewModel.Recipients(["\"Pat Example\" <pat@example.org>", "sam@example.org"], ["Lee Lab <lee@example.org>"])
+            .ShouldBe("to Pat Example, sam@example.org; cc Lee Lab");
+        MainViewModel.Recipients([], []).ShouldBe("");
     }
 
     [Fact]

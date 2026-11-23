@@ -165,6 +165,13 @@ public sealed class Store
         return [.. ids.Select(i => new TriageItem("mail", i.ThreadId, i.ReadId, MailRules.TriageTranscript(LoadMessages(c, null, i.ThreadId), config)))];
     }
 
+    /// <summary>A thread's messages, oldest first, for reading in the app.</summary>
+    public IReadOnlyList<MailMessage> ThreadMessages(string threadId)
+    {
+        using var c = _db.Connect();
+        return LoadMessages(c, null, threadId);
+    }
+
     internal static IReadOnlyList<MailMessage> LoadMessages(SqliteConnection c, SqliteTransaction? tx, string threadId) =>
     [
         .. c.Query("SELECT * FROM email_message WHERE thread_id = @threadId ORDER BY date_utc", new { threadId }, tx)
@@ -200,6 +207,24 @@ public sealed class Store
                 (string?)r.permalink,
                 (string)r.text));
         return SlackRules.Group(messages);
+    }
+
+    /// <summary>One conversation's messages, oldest first, for reading in the app.</summary>
+    public SlackConversation? Conversation(string key)
+    {
+        using var c = _db.Connect();
+        var messages = c.Query("SELECT * FROM slack_message WHERE conversation_key = @key", new { key })
+            .Select(r => new SlackMessage(
+                (string)r.channel_id,
+                (string)r.channel_label,
+                (string)r.participants,
+                (string)r.from_id,
+                (string)r.from_name,
+                (string)r.ts,
+                (string?)r.thread_ts,
+                (string?)r.permalink,
+                (string)r.text));
+        return SlackRules.Group(messages).FirstOrDefault();
     }
 
     /// <summary>The Slack tab: conversations waiting on him that Claude says need a reply, oldest first.</summary>

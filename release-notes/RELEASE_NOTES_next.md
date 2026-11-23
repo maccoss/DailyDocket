@@ -13,7 +13,9 @@ impact first, empty headings deleted at release.
   quietly. Email listed unsent drafts first, then threads waiting on a reply with Claude's
   one-line reason; machine mail, invitations, threads where Mike had the last word, and
   conversations he was only copied on were set aside. Slack listed DMs and mentions waiting on
-  him, the same way. Each row opened in Gmail, Google Calendar or Slack.
+  him, the same way. Selecting a thread or conversation showed it in full beside the list, newest
+  message first, with each reply's quoted history folded away and Slack's markup shown as names;
+  it was read from the local copy, so it read offline.
   (`src/DailyDocket.App`, `src/DailyDocket.Core/Jobs`)
 - **Syncing.** DailyDocket synced on start, every 15 minutes (`"PullIntervalMinutes"`) and on
   **Refresh**, through Claude Code with read-only tools: it could not send, reply or change
