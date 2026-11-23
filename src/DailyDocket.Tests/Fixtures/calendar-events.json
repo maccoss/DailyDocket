@@ -1,0 +1,7 @@
+{"summary":"owner@example.org","timeZone":"America/Los_Angeles","accessRole":"owner","events":[
+ {"id":"ev-1","status":"confirmed","summary":"Lab meeting","start":{"dateTime":"2026-11-23T10:00:00-08:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-11-23T11:00:00-08:00"},"htmlLink":"https://calendar.example/ev-1","attendees":[{"email":"owner@example.org","self":true,"responseStatus":"accepted"},{"email":"pat@example.org","responseStatus":"accepted"},{"email":"room@resource.example","resource":true}]},
+ {"id":"ev-2","status":"confirmed","summary":"Grant call","start":{"dateTime":"2026-11-23T10:30:00-08:00"},"end":{"dateTime":"2026-11-23T11:30:00-08:00"},"attendees":[{"email":"owner@example.org","self":true,"responseStatus":"needsAction"}]},
+ {"id":"ev-3","status":"confirmed","summary":"Declined seminar","start":{"dateTime":"2026-11-23T13:00:00-08:00"},"end":{"dateTime":"2026-11-23T14:00:00-08:00"},"attendees":[{"email":"owner@example.org","self":true,"responseStatus":"declined"}]},
+ {"id":"ev-4","status":"confirmed","summary":"Conference","start":{"date":"2026-11-24"},"end":{"date":"2026-11-26"}},
+ {"id":"ev-5","status":"cancelled","summary":"Gone","start":{"dateTime":"2026-11-23T15:00:00-08:00"},"end":{"dateTime":"2026-11-23T16:00:00-08:00"}}
+]}

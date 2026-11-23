@@ -1,0 +1,114 @@
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
+
+namespace DailyDocket.Core.Configuration;
+
+/// <summary>
+/// Who the docket belongs to and what it reads: <c>config/docket.yaml</c> in the data repository.
+/// </summary>
+/// <remarks>
+/// Everything personal lives here rather than in code, because the app's repository is public:
+/// the owner's addresses and Slack id, the calendar ids, and the extra senders that are machines.
+/// The rules ship generic defaults; this file adds to them. Until the data repository is cloned
+/// (phase 3) the app reads the same file from its data folder.
+/// </remarks>
+public sealed class DocketConfig
+{
+    public OwnerConfig Owner { get; set; } = new();
+
+    public List<CalendarConfig> Calendars { get; set; } = [new() { Key = "work", Id = null, Primary = true }];
+
+    public MailConfig Mail { get; set; } = new();
+
+    public SlackConfig Slack { get; set; } = new();
+
+    public ScheduleConfig Schedule { get; set; } = new();
+
+    /// <summary>Reads <paramref name="path"/>, or returns the defaults when it does not exist.</summary>
+    public static DocketConfig Load(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return new DocketConfig();
+        }
+
+        try
+        {
+            return Parse(File.ReadAllText(path));
+        }
+        catch (YamlDotNet.Core.YamlException e)
+        {
+            throw new InvalidDataException(
+                $"{path} could not be read (line {e.Start.Line}): {e.InnerException?.Message ?? e.Message} Fix the file and refresh.", e);
+        }
+    }
+
+    public static DocketConfig Parse(string yaml)
+    {
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+        return deserializer.Deserialize<DocketConfig?>(yaml) ?? new DocketConfig();
+    }
+
+    /// <summary>The calendar a <c>list_events</c> call read, by the calendarId it was given.</summary>
+    public CalendarConfig CalendarFor(string? calendarId)
+    {
+        var id = string.IsNullOrWhiteSpace(calendarId) || calendarId == "primary" ? null : calendarId;
+        return Calendars.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase))
+            ?? new CalendarConfig { Key = id ?? "work", Id = id, Primary = id is null };
+    }
+}
+
+public sealed class OwnerConfig
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>Mail from any of these addresses was written by the owner.</summary>
+    public List<string> Emails { get; set; } = [];
+
+    public string SlackUserId { get; set; } = "";
+
+    /// <summary>One sentence about the owner, given to the triage model for context.</summary>
+    public string About { get; set; } = "";
+
+    public bool IsMe(string? sender) =>
+        !string.IsNullOrEmpty(sender) && Emails.Any(e => sender.Contains(e, StringComparison.OrdinalIgnoreCase));
+}
+
+public sealed class CalendarConfig
+{
+    /// <summary>A short stable name (work, home, lab, dept) used as the row key.</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>The calendar id; null for the account's primary calendar.</summary>
+    public string? Id { get; set; }
+
+    /// <summary>The label shown on its events; empty for the main calendar.</summary>
+    public string Tag { get; set; } = "";
+
+    /// <summary>Primary calendars are his commitments: checked for clashes. Others are shown quietly.</summary>
+    public bool Primary { get; set; } = true;
+}
+
+public sealed class MailConfig
+{
+    /// <summary>How far back the live inbox sweep reaches.</summary>
+    public int WindowDays { get; set; } = 30;
+
+    /// <summary>Senders that are machines, added to the generic list in the rules.</summary>
+    public List<string> SystemSenders { get; set; } = [];
+}
+
+public sealed class SlackConfig
+{
+    public int WindowDays { get; set; } = 21;
+}
+
+public sealed class ScheduleConfig
+{
+    public int Days { get; set; } = 7;
+
+    public string TimeZone { get; set; } = "America/Los_Angeles";
+}

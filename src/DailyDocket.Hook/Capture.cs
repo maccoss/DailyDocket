@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace DailyDocket.Hook;
 
 /// <summary>PostToolUse: keep the raw result, optionally hand Claude a receipt instead.</summary>
-internal static class Capture
+internal static partial class Capture
 {
     // Keys whose values the model needs to keep paging or to ask for one item.
     private static readonly HashSet<string> IdKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -105,6 +105,13 @@ internal static class Capture
                 {
                     if (value is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrEmpty(s))
                     {
+                        // Slack's cursor is prose, not a field: "use cursor `<token>`".
+                        if (key == "pagination_info" && SlackCursor().Match(s) is { Success: true } cursor)
+                        {
+                            paging["cursor"] = cursor.Groups[1].Value;
+                            continue;
+                        }
+
                         if (PagingKeys.Contains(key))
                         {
                             paging[key] = s;
@@ -150,10 +157,54 @@ internal static class Capture
                         // Plain text that happens to start with a brace.
                     }
                 }
+                else
+                {
+                    SlackIds(str, ids);
+                }
 
                 break;
         }
     }
+
+    /// <summary>
+    /// Slack answers with a labeled text report, not JSON, so its ids are read from the labels:
+    /// each result becomes channel:ts (plus :thread_ts when it is in a thread), which is what a
+    /// run needs to read that thread or its reactions next.
+    /// </summary>
+    internal static void SlackIds(string text, List<string> ids)
+    {
+        foreach (var block in SlackResult().Split(text).Skip(1))
+        {
+            var channel = SlackChannel().Match(block);
+            var ts = SlackTs().Match(block);
+            if (!channel.Success || !ts.Success || ids.Count >= MaxIds)
+            {
+                continue;
+            }
+
+            var thread = SlackThread().Match(block);
+            var id = $"{channel.Groups[1].Value}:{ts.Groups[1].Value}" + (thread.Success ? $":{thread.Groups[1].Value}" : "");
+            if (!ids.Contains(id))
+            {
+                ids.Add(id);
+            }
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"cursor[^`]*`([^`]+)`")]
+    private static partial System.Text.RegularExpressions.Regex SlackCursor();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"###\s+Result\s+\d+\s+of\s+\d+")]
+    private static partial System.Text.RegularExpressions.Regex SlackResult();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Channel:[^\n]*\(ID:\s*([A-Z0-9]+)\)")]
+    private static partial System.Text.RegularExpressions.Regex SlackChannel();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Message_ts:\s*([\d.]+)")]
+    private static partial System.Text.RegularExpressions.Regex SlackTs();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"thread_ts=([\d.]+)")]
+    private static partial System.Text.RegularExpressions.Regex SlackThread();
 
     private static string Sanitize(string value)
     {

@@ -39,6 +39,25 @@ public sealed class CaptureTests : IDisposable
     }
 
     [Fact]
+    public void A_slack_receipt_carries_the_cursor_and_each_results_channel_ts_and_thread()
+    {
+        var report = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "slack-search.txt"));
+        var envelope = new JsonObject
+        {
+            ["results"] = report,
+            ["pagination_info"] = "For the next page of results use cursor `abc123==`",
+        };
+        var response = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = envelope.ToJsonString() });
+
+        var text = Capture.Receipt("mcp__claude_ai_Slack__slack_search_public_and_private", response, 1000);
+
+        text.ShouldContain("cursor=abc123==");
+        text.ShouldContain("D0000000001:1795878902.000100");
+        text.ShouldContain("C0000000003:1795881600.000200:1795880000.000050");
+        text.ShouldNotContain("QC report");
+    }
+
+    [Fact]
     public void A_string_result_gets_a_string_receipt()
     {
         Capture.Shaped(JsonValue.Create("plain"), "r").GetValue<string>().ShouldBe("r");

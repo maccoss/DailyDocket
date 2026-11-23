@@ -1,0 +1,34 @@
+# config/docket.yaml in the private data repository (maccoss/DailyDocket-Data).
+# Until that repository is cloned, the app reads %LOCALAPPDATA%\DailyDocket\docket.yaml.
+# Everything personal belongs here, never in the app's public code.
+
+owner:
+  name: Owner Person
+  emails: [owner@example.org]        # mail from these addresses was written by the owner
+  slackUserId: U0000000001            # an emoji reaction or message from this id counts as an answer
+  about: a professor who runs a research lab   # one line of context for the triage model
+
+calendars:
+  - key: work                          # id omitted: the account's primary calendar
+    primary: true
+  - key: home
+    id: abc123@group.calendar.google.com
+    tag: Home
+    primary: true
+  - key: dept
+    id: department-events@example.org
+    tag: Department
+    primary: false                     # shown quietly, never flagged as a clash
+
+mail:
+  windowDays: 30
+  systemSenders:                       # added to the generic machine senders
+    - alerts@example.com
+    - "@newsletter.example.com"
+
+slack:
+  windowDays: 21
+
+schedule:
+  days: 7
+  timeZone: America/Los_Angeles

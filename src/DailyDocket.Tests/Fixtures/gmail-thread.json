@@ -1,0 +1,5 @@
+{"id":"thread-a","messageCount":3,"viewUrl":"https://mail.google.com/mail/u/0/#all/thread-a","messages":[
+ {"id":"msg-a1","threadId":"thread-a","sender":"\"Pat Example\" <pat@example.org>","toRecipients":["owner@example.org"],"date":"2026-11-18T17:00:00Z","internalDate":"1795280400000","labelIds":["INBOX"],"subject":"QC report","snippet":"Could you send the QC report?","plaintextBody":"Could you send the QC report for the plasma batch?"},
+ {"id":"msg-a3","threadId":"thread-a","sender":"\"Pat Example\" <pat@example.org>","toRecipients":["owner@example.org"],"ccRecipients":["cc@example.org"],"date":"2026-11-20T17:00:00Z","internalDate":"1795453200000","labelIds":["INBOX","UNREAD"],"subject":"Re: QC report","snippet":"Thanks. One more thing: which normalization did you use?","plaintextBody":"Thanks. One more thing: which normalization did you use?"},
+ {"id":"msg-a2","threadId":"thread-a","sender":"Owner Person <owner@example.org>","toRecipients":["pat@example.org"],"date":"2026-11-19T17:00:00Z","internalDate":"1795366800000","labelIds":["SENT"],"subject":"Re: QC report","snippet":"Attached.","plaintextBody":"Attached."}
+]}
