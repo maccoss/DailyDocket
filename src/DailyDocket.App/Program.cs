@@ -185,6 +185,7 @@ public static class Program
                 provider.GetRequiredService<ILogger<OutboxWorker>>());
         });
 
+        services.AddSingleton<Drafter>();
         services.AddSingleton<TodoViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();

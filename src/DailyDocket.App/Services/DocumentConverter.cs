@@ -65,6 +65,81 @@ public static class DocumentConverter
         return new ComposedText(XamlWriter.Save(document), html.ToString(), text.ToString().TrimEnd(), md.ToString().TrimEnd());
     }
 
+    /// <summary>
+    /// A draft written in light Markdown (Claude's): paragraphs, "- " and "1. " lists, **bold**,
+    /// _italic_ and [links](url), as a document the compose box can edit.
+    /// </summary>
+    public static FlowDocument FromMarkdown(string markdown)
+    {
+        var doc = new FlowDocument();
+        List? list = null;
+        foreach (var raw in markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            var line = raw.TrimEnd();
+            var bullet = System.Text.RegularExpressions.Regex.Match(line, @"^\s*[-*]\s+(.*)$");
+            var number = System.Text.RegularExpressions.Regex.Match(line, @"^\s*\d+[.)]\s+(.*)$");
+            if (bullet.Success || number.Success)
+            {
+                var style = number.Success ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc;
+                if (list is null || list.MarkerStyle != style)
+                {
+                    list = new List { MarkerStyle = style };
+                    doc.Blocks.Add(list);
+                }
+
+                var item = new Paragraph();
+                AddInlines(item.Inlines, (bullet.Success ? bullet : number).Groups[1].Value);
+                list.ListItems.Add(new ListItem(item));
+                continue;
+            }
+
+            list = null;
+            var p = new Paragraph();
+            AddInlines(p.Inlines, line);
+            doc.Blocks.Add(p);
+        }
+
+        if (doc.Blocks.Count == 0)
+        {
+            doc.Blocks.Add(new Paragraph());
+        }
+
+        return doc;
+    }
+
+    private static void AddInlines(InlineCollection inlines, string text)
+    {
+        var pattern = new System.Text.RegularExpressions.Regex(@"\*\*(.+?)\*\*|(?<![\w*])_(.+?)_(?![\w*])|\[([^\]]+)\]\((https?://[^)\s]+)\)");
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match m in pattern.Matches(text))
+        {
+            if (m.Index > at)
+            {
+                inlines.Add(new Run(text[at..m.Index]));
+            }
+
+            if (m.Groups[1].Success)
+            {
+                inlines.Add(new Bold(new Run(m.Groups[1].Value)));
+            }
+            else if (m.Groups[2].Success)
+            {
+                inlines.Add(new Italic(new Run(m.Groups[2].Value)));
+            }
+            else
+            {
+                inlines.Add(new Hyperlink(new Run(m.Groups[3].Value)) { NavigateUri = new Uri(m.Groups[4].Value) });
+            }
+
+            at = m.Index + m.Length;
+        }
+
+        if (at < text.Length)
+        {
+            inlines.Add(new Run(text[at..]));
+        }
+    }
+
     /// <summary>Reopens a saved draft's document; an unreadable one opens empty rather than failing.</summary>
     public static FlowDocument Load(string? xaml)
     {

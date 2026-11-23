@@ -40,6 +40,10 @@ impact first, empty headings deleted at release.
   a reply refused by Gmail or Slack said why. A send could only deliver exactly what was written,
   to exactly the recipients shown, once: the run that sends never reads mail, and a hook refuses
   any other call. Unsent replies were also kept in `outbox.json`.
+- **Draft with Claude.** The reply box's **Draft with Claude** wrote a draft from the conversation,
+  in Mike's voice from his recent emails, for him to edit; an optional **Say** line told it what
+  the reply should say. It never sent anything and never decided for him: a reply that turned on
+  his decision came back with the choice in brackets. Drafts never contained em dashes.
 - **Syncing.** DailyDocket synced on start, every 15 minutes (`"PullIntervalMinutes"`) and on
   **Refresh**, through Claude Code with read-only tools: it could not send, reply or change
   anything. Mail threads were read only when they changed, and Claude judged each conversation

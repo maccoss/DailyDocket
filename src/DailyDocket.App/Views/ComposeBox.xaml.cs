@@ -30,12 +30,14 @@ public partial class ComposeBox : UserControl
             if (_vm is not null)
             {
                 _vm.LoadRequested -= OnLoadRequested;
+                _vm.DraftReady -= OnDraftReady;
             }
 
             _vm = e.NewValue as ComposeViewModel;
             if (_vm is not null)
             {
                 _vm.LoadRequested += OnLoadRequested;
+                _vm.DraftReady += OnDraftReady;
             }
         };
     }
@@ -55,6 +57,25 @@ public partial class ComposeBox : UserControl
             Editor.Focus();
             Editor.CaretPosition = Editor.Document.ContentEnd;
         }, DispatcherPriority.Input);
+    }
+
+    /// <summary>Puts Claude's draft in the box, asking first if Mike has already written something.</summary>
+    private void OnDraftReady(string markdown)
+    {
+        if (!DocumentConverter.Convert(Editor.Document).IsEmpty &&
+            MessageBox.Show(Window.GetWindow(this), "Replace what you have written with Claude's draft?", "Draft with Claude",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var doc = DocumentConverter.FromMarkdown(markdown);
+        doc.FontFamily = Editor.FontFamily;
+        doc.FontSize = Editor.FontSize;
+        doc.PagePadding = new Thickness(2);
+        Editor.Document = doc;
+        _vm?.SaveDraft(DocumentConverter.Convert(Editor.Document));
+        Editor.Focus();
     }
 
     private void OnTextChanged(object sender, TextChangedEventArgs e)

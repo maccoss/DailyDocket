@@ -17,14 +17,60 @@ public sealed partial class ComposeViewModel : ObservableObject
 {
     private readonly OutboxStore _outbox;
     private readonly AppSettings _settings;
+    private readonly Drafter? _drafter;
     private OutboxItem? _item;
+    private Func<string>? _conversation;
 
-    public ComposeViewModel(OutboxStore outbox, AppSettings settings, OutboxKind kind)
+    public ComposeViewModel(OutboxStore outbox, AppSettings settings, OutboxKind kind, Drafter? drafter = null)
     {
         _outbox = outbox;
         _settings = settings;
+        _drafter = drafter;
         Kind = kind;
     }
+
+    /// <summary>Claude's draft, as light Markdown, for the view to put in the box.</summary>
+    public event Action<string>? DraftReady;
+
+    /// <summary>What Mike wants the reply to say, for Draft with Claude (optional).</summary>
+    [ObservableProperty]
+    public partial string Guidance { get; set; } = "";
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DraftWithClaudeCommand))]
+    public partial bool IsDrafting { get; set; }
+
+    /// <summary>
+    /// Asks Claude for a draft of this reply, from the conversation in the cache. The draft only
+    /// fills the box: Mike edits it and presses Send himself, or not.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDraft))]
+    private async Task DraftWithClaudeAsync()
+    {
+        if (_drafter is null || _conversation is null)
+        {
+            return;
+        }
+
+        IsDrafting = true;
+        Note = "Claude is drafting...";
+        try
+        {
+            var draft = await _drafter.DraftAsync(IsEmail, _conversation(), Guidance, CancellationToken.None);
+            DraftReady?.Invoke(draft);
+            Note = "Claude's draft is in the box. Read and edit it before sending.";
+        }
+        catch (InvalidOperationException e)
+        {
+            Note = e.Message;
+        }
+        finally
+        {
+            IsDrafting = false;
+        }
+    }
+
+    private bool CanDraft() => !IsDrafting && _drafter is not null && _conversation is not null;
 
     /// <summary>Asks the view to show this document (a reopened draft), or an empty one.</summary>
     public event Action<string?>? LoadRequested;
@@ -57,8 +103,11 @@ public sealed partial class ComposeViewModel : ObservableObject
     public partial string? Note { get; set; }
 
     /// <summary>Opens a new reply, or this conversation's existing draft if there is one.</summary>
-    public void Open(string target, string? replyTo, string? channel, string subject, string baseMessage, IReadOnlyList<string> to, IReadOnlyList<string> cc, string heading)
+    public void Open(string target, string? replyTo, string? channel, string subject, string baseMessage, IReadOnlyList<string> to, IReadOnlyList<string> cc, string heading, Func<string>? conversation = null)
     {
+        _conversation = conversation;
+        Guidance = "";
+        DraftWithClaudeCommand.NotifyCanExecuteChanged();
         var draft = _outbox.ForTarget(target).FirstOrDefault(i => i.Status == OutboxStatus.Draft && i.Kind == Kind);
         _item = draft ?? new OutboxItem(
             Guid.NewGuid().ToString("N"), Kind, OutboxStatus.Draft, target, replyTo, channel, to, cc, subject, baseMessage,
@@ -73,8 +122,10 @@ public sealed partial class ComposeViewModel : ObservableObject
     }
 
     /// <summary>Reopens an outbox item (held, failed, or pulled back by Undo) for editing.</summary>
-    public void Edit(OutboxItem item)
+    public void Edit(OutboxItem item, Func<string>? conversation = null)
     {
+        _conversation = conversation;
+        DraftWithClaudeCommand.NotifyCanExecuteChanged();
         _item = item with { Status = OutboxStatus.Draft, SendAfter = null, Problem = null };
         _outbox.Save(_item);
         Reset(To, _item.To);

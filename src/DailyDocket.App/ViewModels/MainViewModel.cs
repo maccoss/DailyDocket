@@ -41,12 +41,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly System.Windows.Threading.DispatcherTimer _countdown = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings,
-        OutboxStore outbox, OutboxWorker worker, ILogger<MainViewModel> log)
+        OutboxStore outbox, OutboxWorker worker, Drafter drafter, ILogger<MainViewModel> log)
     {
         _outbox = outbox;
         _worker = worker;
-        MailCompose = new ComposeViewModel(outbox, settings, OutboxKind.EmailReply);
-        SlackCompose = new ComposeViewModel(outbox, settings, OutboxKind.SlackReply);
+        MailCompose = new ComposeViewModel(outbox, settings, OutboxKind.EmailReply, drafter);
+        SlackCompose = new ComposeViewModel(outbox, settings, OutboxKind.SlackReply, drafter);
         _store = store;
         _jobs = jobs;
         _scheduler = scheduler;
@@ -379,7 +379,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var newest = thread.OrderBy(x => x.Date ?? DateTimeOffset.MinValue).Last();
         var (to, cc) = OutboxRules.Recipients(thread, replyAll, _config.Get());
-        MailCompose.Open(m.Key, newest.Id, null, m.Subject, newest.Id, to, cc, replyAll ? "Reply all" : $"Reply to {m.From}");
+        MailCompose.Open(m.Key, newest.Id, null, m.Subject, newest.Id, to, cc, replyAll ? "Reply all" : $"Reply to {m.From}", () => MailConversation(m.Key));
     }
 
     [RelayCommand]
@@ -390,7 +390,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SlackCompose.Open(s.Key, conv.ThreadTs, conv.ChannelId, s.Where, conv.Last.Ts, [], [], conv.ThreadTs is null ? $"Reply in {s.Where}" : "Reply in thread");
+        SlackCompose.Open(s.Key, conv.ThreadTs, conv.ChannelId, s.Where, conv.Last.Ts, [], [], conv.ThreadTs is null ? $"Reply in {s.Where}" : "Reply in thread", () => SlackConversation(s.Key));
     }
 
     /// <summary>Undo inside the window: back to a draft, open for editing. Nothing was sent.</summary>
@@ -402,7 +402,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        (item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose).Edit(item);
+        Compose(item).Edit(item, Conversation(item));
         ReloadOutbox();
     }
 
@@ -411,7 +411,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (view is not null && _outbox.Get(view.Item.Id) is { Status: OutboxStatus.Held or OutboxStatus.Failed } item)
         {
-            (item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose).Edit(item);
+            Compose(item).Edit(item, Conversation(item));
             ReloadOutbox();
         }
     }
@@ -449,6 +449,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _outbox.Delete(view.Item.Id);
             ReloadOutbox();
         }
+    }
+
+    private ComposeViewModel Compose(OutboxItem item) => item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose;
+
+    private Func<string> Conversation(OutboxItem item) =>
+        item.Kind == OutboxKind.EmailReply ? () => MailConversation(item.Target) : () => SlackConversation(item.Target);
+
+    /// <summary>The thread for a draft, oldest first: each message's new text, without the quoted history it repeats.</summary>
+    private string MailConversation(string threadId)
+    {
+        var zone = _config.Zone;
+        var sb = new System.Text.StringBuilder();
+        foreach (var m in _store.ThreadMessages(threadId).TakeLast(8))
+        {
+            var text = Core.Mail.MailText.SplitQuoted(m.Body ?? m.Snippet).Message;
+            sb.Append("--- From: ").Append(m.Sender).Append(" (")
+              .Append(m.Date is { } d ? TimeZoneInfo.ConvertTime(d, zone).ToString("ddd MMM d, h:mm tt", CultureInfo.InvariantCulture) : "").Append(")\n")
+              .Append("To: ").Append(string.Join(", ", m.To)).Append('\n')
+              .Append(text.Length > 2000 ? text[..2000] : text).Append("\n\n");
+        }
+
+        return sb.ToString();
+    }
+
+    private string SlackConversation(string key)
+    {
+        if (_store.Conversation(key) is not { } conv)
+        {
+            return "";
+        }
+
+        var me = _config.Get().Owner.SlackUserId;
+        var zone = _config.Zone;
+        return string.Join('\n', conv.Messages.TakeLast(12).Select(m =>
+            $"{(m.FromId == me ? "Mike" : m.FromName)} ({TimeZoneInfo.ConvertTime(m.When, zone).ToString("ddd h:mm tt", CultureInfo.InvariantCulture)}): {Core.Slack.SlackRules.Readable(m.Text)}"));
     }
 
     private void ReloadOutbox()

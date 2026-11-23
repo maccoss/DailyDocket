@@ -84,6 +84,18 @@
                 <Button Style="{StaticResource Tool}" Content="Link" ToolTip="Make the selected text a link" Click="OnLink" />
             </StackPanel>
 
+            <!-- Draft with Claude: fills the box for Mike to edit; it never sends. -->
+            <DockPanel Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" Content="Draft with Claude" Command="{Binding DraftWithClaudeCommand}" Margin="6,0,0,0"
+                        ToolTip="Claude drafts a reply from this conversation; you edit it and decide whether to send" />
+                <TextBlock DockPanel.Dock="Left" Text="Say" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBox Text="{Binding Guidance, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optional: what the reply should say, e.g. yes, but next week">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding DraftWithClaudeCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+            </DockPanel>
+
             <RichTextBox x:Name="Editor" MinHeight="140" MaxHeight="420" VerticalScrollBarVisibility="Auto" AcceptsTab="False" SpellCheck.IsEnabled="True"
                          BorderBrush="{StaticResource LineBrush}" Padding="4" FontSize="14" TextChanged="OnTextChanged" />
 

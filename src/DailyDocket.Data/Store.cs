@@ -176,6 +176,20 @@ public sealed class Store
         return [.. ids.Select(i => new TriageItem("mail", i.ThreadId, i.ReadId, MailRules.TriageTranscript(LoadMessages(c, null, i.ThreadId), config)))];
     }
 
+    /// <summary>Mike's own recent emails, for a draft's voice: the new text of each, without quoted history.</summary>
+    public IReadOnlyList<string> RecentFromMe(DocketConfig config, int max)
+    {
+        using var c = _db.Connect();
+        return
+        [
+            .. c.Query<(string Sender, string? Body)>("SELECT sender, body FROM email_message WHERE body IS NOT NULL ORDER BY date_utc DESC LIMIT 300")
+                .Where(m => config.Owner.IsMe(m.Sender))
+                .Select(m => MailText.SplitQuoted(m.Body).Message)
+                .Where(t => t.Length is > 40 and < 1500)
+                .Take(max),
+        ];
+    }
+
     /// <summary>A thread's messages, oldest first, for reading in the app.</summary>
     public IReadOnlyList<MailMessage> ThreadMessages(string threadId)
     {

@@ -88,6 +88,36 @@ public sealed class DocumentConverterTests
     }
 
     [Fact]
+    public void Claudes_markdown_draft_becomes_an_editable_document()
+    {
+        var back = OnSta(() => DocumentConverter.Convert(DocumentConverter.FromMarkdown(
+            "Hi Catherine,\n\nThe figures look **good**, _thanks_.\n- keywords\n- data statement\n1. submit\n\nSee [the guide](https://example.org/g).\nMike")));
+
+        back.Html.ShouldBe("<div>Hi Catherine,</div><div><br></div><div>The figures look <b>good</b>, <i>thanks</i>.</div>"
+            + "<ul><li>keywords</li><li>data statement</li></ul><ol><li>submit</li></ol><div><br></div>"
+            + "<div>See <a href=\"https://example.org/g\">the guide</a>.</div><div>Mike</div>");
+    }
+
+    [Fact]
+    public void Drafts_never_keep_an_em_dash()
+    {
+        DailyDocket.Core.Drafting.DraftPlans.HouseStyle("Yes — Friday works—thanks.").ShouldBe("Yes, Friday works, thanks.");
+    }
+
+    [Fact]
+    public void A_draft_run_has_no_tools_at_all()
+    {
+        var plan = DailyDocket.Core.Drafting.DraftPlans.Draft(Fixtures.Fixture.Config(), true, "--- From: pat@example.org\nCan you send it?", ["Thanks, will do.\nMike"], "yes, by Friday", "sonnet");
+
+        plan.AllowedTools.ShouldBeEmpty();
+        plan.DisallowedTools.ShouldContain("ToolSearch");
+        plan.DisallowedTools.ShouldContain("mcp__claude_ai_Gmail__reply");
+        plan.Prompt.ShouldContain("yes, by Friday");
+        plan.Prompt.ShouldContain("Never use em dashes");
+        plan.Capture.ShouldBeFalse();
+    }
+
+    [Fact]
     public void An_unreadable_draft_opens_empty()
     {
         OnSta(() => DocumentConverter.Convert(DocumentConverter.Load("<not xaml")).IsEmpty).ShouldBeTrue();

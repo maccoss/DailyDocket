@@ -294,6 +294,15 @@ The to-dos and Handled marks live in `maccoss/DailyDocket-Data` as designed: `to
 - **Reorder is Up/Down (and Alt+arrows)**, one file per move; drag and drop is still to come. Saving a task captured from a message marks the message handled (the artifact's rule). Claude's help drafting the task's title and notes (the artifact's capture brief) comes with phase 5.
 - **Verdicts and briefs are not in git yet**: verdicts stay in each machine's cache until the shared nightly jobs (phase 6) need them.
 
+### Phases 4 and 5 as built (email and Slack replies; Claude drafting online)
+
+- **Compose** is a WPF rich text box under the reader: recipient chips (email) that can be removed or added, and the toolbar's bold, italic, underline, lists and links. The document is converted to Gmail-style HTML (a `div` per line) with a plain-text alternative, or to standard Markdown for Slack (its send tool takes Markdown). The draft, its own XAML included, is saved to the outbox on every pause.
+- **Every send is two runs.** A reading run fetches the one conversation fresh (`get_thread` metadata, or `slack_read_thread`/`slack_read_channel` from the base ts); anything newer than the item's base holds it. Then a sending run, allowed only the one send tool, with every read and every other write disallowed, makes the exact call; the `PreToolUse` guard compares it with the item's claim (keys sorted, exact values) and allows it once. The result's id is taken from the run's capture of the call. A Slack fresh read is text, so any later ts in it holds the item: it errs toward a look.
+- **Email replies always pass explicit `to` and `cc`** (the person answered, or everyone else on the newest message for Reply all, never Mike), so what the guard checks is what he saw. `includeSignature` follows the setting (default on).
+- **The outbox is schema version 2**, added to an existing cache without dropping it; a database from a newer version is refused rather than dropped. Unsent items are mirrored to `outbox.json`.
+- **Draft with Claude** runs Sonnet with no tools at all, the conversation and a few of his recent sent emails in the prompt, and an optional line of guidance ("Say"). Without guidance it must not decide for him: a reply that turns on a decision is written around a bracketed choice. A house-style filter removes em dashes. About $0.08 to $0.29 a draft on skiddaw.
+- **Not yet:** calendar RSVPs and new events through the outbox, Save to Gmail drafts, the offline local model (Foundry Local), Claude drafting the To do capture, and the in:sent check for an interrupted send (it is held for Mike instead).
+
 ## Open decisions
 
 Each has a recommendation, so work can start on the defaults.
