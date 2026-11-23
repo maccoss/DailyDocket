@@ -53,11 +53,21 @@ public static partial class SlackRules
     /// conversations. His own messages are needed: his reply rarely mentions himself, so without
     /// them a channel mention never clears.
     /// </summary>
+    /// <remarks>
+    /// A message that starts a thread belongs to that thread, as in Slack: its ts is the thread's
+    /// ts, though search reports it with no thread. Left with the channel, a DM answered in a thread
+    /// ("Reply" on the message) stayed waiting on him, since the channel's last word was still
+    /// theirs (November 2026).
+    /// </remarks>
     public static IReadOnlyList<SlackConversation> Group(IEnumerable<SlackMessage> messages)
     {
+        var all = messages.ToList();
+        var threads = all.Where(m => m.ThreadTs is not null).Select(m => (m.ChannelId, m.ThreadTs!)).ToHashSet();
+        string? Thread(SlackMessage m) => m.ThreadTs ?? (threads.Contains((m.ChannelId, m.Ts)) ? m.Ts : null);
         return
         [
-            .. messages
+            .. all
+                .Select(m => m with { ThreadTs = Thread(m) })
                 .GroupBy(m => ConversationKey(m.ChannelId, m.ThreadTs))
                 .Select(g =>
                 {

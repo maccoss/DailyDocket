@@ -38,6 +38,14 @@ public sealed partial class UpdateBarViewModel : ObservableObject
     [ObservableProperty]
     public partial string? Text { get; set; }
 
+    /// <summary>The button's words: "Restart to update to 26.1.2".</summary>
+    [ObservableProperty]
+    public partial string? Label { get; set; }
+
+    /// <summary>A line beside the button, when there is more to say (a failed install, a reply mid-send).</summary>
+    [ObservableProperty]
+    public partial string? Note { get; set; }
+
     /// <summary>Starts the checks: one now, then every four hours.</summary>
     public void Start() => _updates.Start();
 
@@ -49,7 +57,7 @@ public sealed partial class UpdateBarViewModel : ObservableObject
         // the countdown resumes after the restart.
         if (_outbox.WithStatus(OutboxStatus.Sending).Count > 0)
         {
-            Text = "A reply is being sent. Press Restart again once it has gone.";
+            Text = Note = "A reply is being sent. Press the button again once it has gone.";
             return;
         }
 
@@ -61,6 +69,8 @@ public sealed partial class UpdateBarViewModel : ObservableObject
     {
         IsReady = status.Stage == UpdateStage.ReadyToApply;
         Text = UpdatePolicy.TextFor(status);
+        Label = UpdatePolicy.ButtonFor(status);
+        Note = UpdatePolicy.NoteFor(status);
     }
 
     private static void OnUi(Action action)

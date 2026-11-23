@@ -57,4 +57,14 @@ public static class UpdatePolicy
         UpdateStage.ReadyToApply => $"Update {status.AvailableVersion} ready: restart to install",
         _ => null,
     };
+
+    /// <summary>The green button's words at the upper right: the version it will install.</summary>
+    public static string ButtonFor(UpdateStatus status) => $"Restart to update to {status.AvailableVersion}";
+
+    /// <summary>
+    /// The line beside the button: only when something needs saying beyond the button (the last
+    /// install failed); null otherwise, since the button already names the version.
+    /// </summary>
+    public static string? NoteFor(UpdateStatus status) =>
+        status.Stage == UpdateStage.ReadyToApply ? status.Error : null;
 }
