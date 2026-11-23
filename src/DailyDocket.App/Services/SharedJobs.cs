@@ -22,11 +22,54 @@ public sealed class SharedJobs
 {
     private readonly ILogger<SharedJobs> _log;
 
-    public SharedJobs(MeetingPrep prep, NightlyJobs nightly, ILogger<SharedJobs> log)
+    public SharedJobs(MeetingPrep prep, NightlyJobs nightly, VerdictSync verdicts, JobStore jobs, SyncScheduler scheduler, TodoBook book, ILogger<SharedJobs> log)
     {
         Prep = prep;
         Nightly = nightly;
+        Verdicts = verdicts;
         _log = log;
+
+        // Every verdict judged here is shared; verdicts judged elsewhere are taken in before this
+        // machine decides what to judge, and whenever a data sync brings new ones.
+        jobs.VerdictRecorded = (source, key, forMessage, needsReply, why) => Guard("Sharing a verdict", () => verdicts.Export(source, key, forMessage, needsReply, why));
+        scheduler.BeforeTriage = () => ImportVerdicts();
+        book.Synced += result =>
+        {
+            if (result.Changed && ImportVerdicts() > 0)
+            {
+                CacheChanged?.Invoke();
+            }
+        };
+    }
+
+    /// <summary>Raised when verdicts from another machine changed what the tabs show, on a background thread.</summary>
+    public event Action? CacheChanged;
+
+    public VerdictSync Verdicts { get; }
+
+    /// <summary>Takes in other machines' verdicts; a problem is logged, never allowed to stop a sync.</summary>
+    public int ImportVerdicts()
+    {
+        var count = 0;
+        Guard("Reading shared verdicts", () => count = Verdicts.Import());
+        if (count > 0)
+        {
+            _log.LogInformation("Took in {Count} verdicts from other machines", count);
+        }
+
+        return count;
+    }
+
+    private void Guard(string what, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _log.LogWarning(e, "{What} failed", what);
+        }
     }
 
     public MeetingPrep Prep { get; }
@@ -65,6 +108,11 @@ public sealed class SharedJobs
             summary => provider.GetRequiredService<TodoBook>().NoteChange(summary),
             AppInfo.MachineName,
             provider.GetRequiredService<ILogger<MeetingPrep>>()));
+        services.AddSingleton(provider => new VerdictSync(
+            provider.GetRequiredService<Store>(),
+            () => provider.GetRequiredService<DataRepository>().Root,
+            summary => provider.GetRequiredService<TodoBook>().NoteChange(summary),
+            AppInfo.MachineName));
         services.AddSingleton<ILeaseStore>(provider => new RepoLeaseStore(provider.GetRequiredService<TodoBook>()));
         services.AddSingleton(provider => new NightlyJobs(
             provider.GetRequiredService<ILeaseStore>(),
@@ -80,8 +128,33 @@ public sealed class SharedJobs
     private static async Task<IReadOnlyList<JobOutcome>> Work(IServiceProvider provider, NightlySlot slot, CancellationToken cancellationToken)
     {
         var outcomes = new List<JobOutcome>();
+        if (slot == NightlySlot.Nightly)
+        {
+            // Under the sync's lock: the deep sweep's triage must not race a regular sync's.
+            var scheduler = provider.GetRequiredService<SyncScheduler>();
+            outcomes.AddRange(await scheduler.ExclusiveAsync(ct => DeepSweepAsync(provider, ct), cancellationToken));
+        }
+
         outcomes.AddRange(await provider.GetRequiredService<MeetingPrep>().RunDueAsync(DateTimeOffset.Now, cancellationToken));
-        _ = slot;
+        return outcomes;
+    }
+
+    /// <summary>The nightly deep sweep: read older mail, then judge what it found.</summary>
+    private static async Task<IReadOnlyList<JobOutcome>> DeepSweepAsync(IServiceProvider provider, CancellationToken cancellationToken)
+    {
+        var runner = provider.GetRequiredService<JobRunner>();
+        var jobs = provider.GetRequiredService<JobStore>();
+        var settings = provider.GetRequiredService<AppSettings>();
+        var config = provider.GetRequiredService<Func<DocketConfig>>()();
+        var now = DateTimeOffset.UtcNow;
+
+        var outcomes = new List<JobOutcome> { await runner.RunAsync(JobPlans.DeepSweepRun(config, now, settings.PullModel), cancellationToken) };
+        provider.GetRequiredService<SharedJobs>().ImportVerdicts();
+        if (jobs.TriageBatch(now, 1).Count > 0)
+        {
+            outcomes.Add(await runner.RunAsync(JobPlans.TriageRun(settings.JudgmentModel), cancellationToken));
+        }
+
         return outcomes;
     }
 
@@ -90,7 +163,8 @@ public sealed class SharedJobs
         var store = provider.GetRequiredService<Store>();
         var jobs = provider.GetRequiredService<JobStore>();
         var book = provider.GetRequiredService<TodoBook>();
-        var (rows, _) = store.MailRows(jobs.MailSince(DateTimeOffset.UtcNow), book.Handled);
+        var now = DateTimeOffset.UtcNow;
+        var (rows, _) = store.MailRows(jobs.MailSince(now), book.Handled, jobs.Deep(now));
         return PrepContext.OpenItems(book.Items, rows.Where(r => r.State == "Owed").Select(r => (r.WaitingOn, r.Subject, r.Why)));
     }
 

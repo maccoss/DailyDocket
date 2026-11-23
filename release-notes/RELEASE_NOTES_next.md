@@ -75,6 +75,13 @@ impact first, empty headings deleted at release.
   all-day and home-calendar events, meetings with no one else invited, and department events Mike
   had not accepted were skipped (`prep` in `docket.yaml`). Prep runs could only read Calendar, Gmail
   and Drive, and could save only the brief for their own meeting.
+- **Verdicts shared between computers.** Claude's "needs a reply" verdicts were saved in the data
+  repository (`verdicts/email`, `verdicts/slack`), so a conversation judged on one computer was
+  not judged, or paid for, again on the others. A verdict for an older message never replaced one
+  for a newer message.
+- **Old unanswered mail surfaced.** Each night the designated computer also read the inbox older
+  than the 30-day window, back 90 days (`mail.deepDays`), and Claude judged what it found, so old
+  threads still waiting on a reply appeared on the Email tab.
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
   SQLCipher, with its key kept in Windows Credential Manager.
 

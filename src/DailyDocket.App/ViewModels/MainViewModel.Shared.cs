@@ -20,6 +20,9 @@ public sealed partial class MainViewModel
     {
         // A brief written here (Prep now, the nightly run) or arriving from another machine's sync.
         _shared.Prep.BriefSaved += _ => OnUi(Reload);
+
+        // Verdicts another machine shared can take threads off the Email and Slack tabs.
+        _shared.CacheChanged += () => OnUi(Reload);
     }
 
     /// <summary>Starts the nightly schedule, once the configuration is complete.</summary>

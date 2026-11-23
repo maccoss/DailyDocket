@@ -802,7 +802,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void ReloadMail(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
-        var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled);
+        var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled, _jobs.Deep(now));
         var items = rows.Where(r => r.State is "Owed" or "Draft").Select(r =>
         {
             var waited = now - (r.WaitingSince ?? now);

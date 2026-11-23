@@ -162,6 +162,40 @@ public static class JobPlans
         return new JobPlan(Triage, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, false, 40, new Dictionary<string, string>());
     }
 
+    public const string DeepSweep = "deep";
+
+    /// <summary>Pages of search results the deep sweep follows, and rounds of thread reads it makes.</summary>
+    public const int DeepPages = 10;
+
+    public const int DeepReadRounds = 3;
+
+    /// <summary>
+    /// The nightly deep sweep: the same read-only mail pull as every 15 minutes, over the inbox
+    /// older than the live window (back to mail.deepDays), so old threads still waiting on Mike are
+    /// read and then judged by the usual triage run. Bounded: at most <see cref="DeepPages"/> pages
+    /// and <see cref="DeepReadRounds"/> rounds of <see cref="ThreadsPerRun"/> thread reads a night;
+    /// the rest wait for the next night.
+    /// </summary>
+    public static JobPlan DeepSweepRun(DocketConfig config, DateTimeOffset now, string model)
+    {
+        string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
+        var older = Math.Max(1, config.Mail.WindowDays);
+        var newer = Math.Max(older + 1, config.Mail.DeepDays);
+        var search = JsonSerializer.Serialize(new { query = $"{InboxQuery} older_than:{older}d newer_than:{newer}d", pageSize = 50, view = "THREAD_VIEW_SUMMARY" }, Json);
+
+        var prompt = Preamble("nightly deep sweep", tools) +
+            $"""
+            1. Call {ConnectorTools.SearchThreads} {search}
+               While a receipt lists a nextPageToken, call it again with the same arguments plus that pageToken, up to {DeepPages} pages in all.
+            2. Call {AppTools.ThreadsToReadToolName}. It returns the thread ids the app needs read.
+            3. For each id it returned, call {ConnectorTools.GetThread} {"{"}"threadId": "<id>", "messageFormat": "PLAIN_TEXT"{"}"}. These are independent; you may call several together.
+            4. Repeat steps 2 and 3 until it returns no ids, at most {DeepReadRounds} times in all.
+            """;
+
+        return new JobPlan(DeepSweep, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 200,
+            new Dictionary<string, string> { ["mail/deep"] = Iso(now) });
+    }
+
     public const string Prep = "prep";
 
     /// <summary>

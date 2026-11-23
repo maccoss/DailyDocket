@@ -103,6 +103,9 @@ public sealed class MailConfig
     /// <summary>How far back the live inbox sweep reaches.</summary>
     public int WindowDays { get; set; } = 30;
 
+    /// <summary>How far back the nightly deep sweep reaches, beyond the live window, for old unanswered threads.</summary>
+    public int DeepDays { get; set; } = 90;
+
     /// <summary>Senders that are machines, added to the generic list in the rules.</summary>
     public List<string> SystemSenders { get; set; } = [];
 }
