@@ -16,7 +16,17 @@ public sealed record JobPlan(
     IReadOnlyList<string> DisallowedTools,
     bool Capture,
     int MaxTurns,
-    IReadOnlyDictionary<string, string> Watermarks);
+    IReadOnlyDictionary<string, string> Watermarks)
+{
+    /// <summary>
+    /// For a send: the claims file the PreToolUse guard checks every write call against. Null for
+    /// readers, which have no write tools at all.
+    /// </summary>
+    public string? Claims { get; init; }
+
+    /// <summary>Whether captured results are replaced by a receipt before Claude sees them.</summary>
+    public bool Receipt { get; init; } = true;
+}
 
 /// <summary>
 /// The pull and triage runs. Claude makes exactly the calls listed, with exactly these arguments:

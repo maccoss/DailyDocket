@@ -11,7 +11,39 @@ namespace DailyDocket.Data;
 /// </remarks>
 internal static class Migrations
 {
-    public const int Current = 1;
+    public const int Current = 2;
+
+    /// <summary>
+    /// Version 2: the outbox, the one table that is not a cache (Mike's unsent writing). From here
+    /// on a version step must carry it across, never drop it.
+    /// </summary>
+    private const string OutboxSchema = """
+        CREATE TABLE IF NOT EXISTS outbox_item (
+            id          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            status      TEXT NOT NULL,
+            target      TEXT NOT NULL,
+            reply_to    TEXT,
+            channel     TEXT,
+            to_list     TEXT NOT NULL,
+            cc_list     TEXT NOT NULL,
+            subject     TEXT NOT NULL,
+            base        TEXT NOT NULL,
+            document    TEXT NOT NULL,
+            html        TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            created     TEXT NOT NULL,
+            updated     TEXT NOT NULL,
+            send_after  TEXT,
+            claimed_at  TEXT,
+            machine     TEXT NOT NULL,
+            attempts    INTEGER NOT NULL,
+            remote_id   TEXT,
+            problem     TEXT
+        );
+        CREATE INDEX IF NOT EXISTS outbox_status ON outbox_item (status);
+        CREATE INDEX IF NOT EXISTS outbox_target ON outbox_item (target);
+        """;
 
     private const string Schema = """
         PRAGMA journal_mode = WAL;
@@ -142,18 +174,25 @@ internal static class Migrations
             return;
         }
 
-        using var tx = c.BeginTransaction();
-        if (version != 0)
+        if (version > Current)
         {
-            // Unknown or older cache: drop everything and let the next pull refill it.
-            var tables = c.Query<string>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'", transaction: tx).ToList();
-            foreach (var table in tables)
-            {
-                c.Execute($"DROP TABLE \"{table}\"", transaction: tx);
-            }
+            // A newer DailyDocket wrote this file. Dropping it would lose that version's outbox.
+            throw new InvalidOperationException(
+                "This computer's DailyDocket database was written by a newer version of DailyDocket. Update DailyDocket, then start it again.");
+        }
+
+        using var tx = c.BeginTransaction();
+        if (version == 1)
+        {
+            // The cache stays; add the outbox.
+            c.Execute(OutboxSchema, transaction: tx);
+            c.Execute($"PRAGMA user_version = {Current};", transaction: tx);
+            tx.Commit();
+            return;
         }
 
         c.Execute(Schema.Replace("PRAGMA journal_mode = WAL;", "", StringComparison.Ordinal), transaction: tx);
+        c.Execute(OutboxSchema, transaction: tx);
         c.Execute($"PRAGMA user_version = {Current};", transaction: tx);
         tx.Commit();
         c.Execute("PRAGMA journal_mode = WAL;");

@@ -11,7 +11,14 @@ namespace DailyDocket.Core.Jobs;
 
 /// <summary>How a run ended.</summary>
 /// <param name="Detail">For the user when it failed: what happened and what to do.</param>
-public sealed record JobOutcome(string Job, bool Ok, string? Detail, int Captured, decimal? CostUsd);
+public sealed record JobOutcome(string Job, bool Ok, string? Detail, int Captured, decimal? CostUsd)
+{
+    /// <summary>Claude's last message: for a send, what it reports when the call was refused.</summary>
+    public string? FinalText { get; init; }
+
+    /// <summary>The run's capture folder, for reading a send's result.</summary>
+    public string? CaptureFolder { get; init; }
+}
 
 /// <summary>Runs one <see cref="JobPlan"/> as a headless Claude Code session.</summary>
 /// <remarks>
@@ -58,6 +65,7 @@ public sealed class JobRunner
         string? sessionId = null;
         decimal? cost = null;
         string? failure = null;
+        string? finalText = null;
         try
         {
             var context = new RunContext(_store, _config, runId, captures);
@@ -74,7 +82,7 @@ public sealed class JobRunner
                 PermissionMode = "dontAsk",
                 AllowedTools = plan.AllowedTools,
                 DisallowedTools = plan.DisallowedTools,
-                SettingsPath = plan.Capture ? WriteSettings(runDir, captures) : null,
+                SettingsPath = plan.Capture || plan.Claims is not null ? WriteSettings(runDir, captures, plan) : null,
                 SettingSources = "local",
                 MaxTurns = plan.MaxTurns,
                 Environment = Environment(),
@@ -118,6 +126,7 @@ public sealed class JobRunner
                 case TurnFinished t:
                     cost = t.CostUsd;
                     sessionId ??= t.SessionId;
+                    finalText = t.Result;
                     break;
                 case SessionEnded ended:
                     failure = Explain(plan.Job, ended.ErrorOutput);
@@ -151,29 +160,51 @@ public sealed class JobRunner
 
         _store.FinishRun(runId, sessionId, failure is null ? "ok" : "failed", failure, cost is null ? null : (double)cost);
         _log.LogInformation("Run {RunId} finished: {Outcome}, {Captured} captures", runId, failure is null ? "ok" : "failed", captured);
-        return new JobOutcome(plan.Job, failure is null, failure, captured, cost);
+        return new JobOutcome(plan.Job, failure is null, failure, captured, cost) { FinalText = finalText, CaptureFolder = captures };
     }
 
-    /// <summary>The run's only hook: capture every connector result and hand Claude a receipt.</summary>
-    internal string WriteSettings(string runDir, string captures)
+    /// <summary>Readers' plans keep the old two-argument form.</summary>
+    internal string WriteSettings(string runDir, string captures) => WriteSettings(runDir, captures, null);
+
+    /// <summary>
+    /// The run's only hooks: capture every connector result (with a receipt for readers) and, for a
+    /// send, the guard on every write tool, which allows exactly the claimed call, once.
+    /// </summary>
+    internal string WriteSettings(string runDir, string captures, JobPlan? plan)
     {
         static string Slash(string path) => path.Replace('\\', '/');
-        var settings = new
+        var hooks = new System.Text.Json.Nodes.JsonObject
         {
-            hooks = new
+            ["PostToolUse"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
             {
-                PostToolUse = new[]
+                ["matcher"] = ConnectorTools.CaptureMatcher,
+                ["hooks"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
                 {
-                    new
-                    {
-                        matcher = ConnectorTools.CaptureMatcher,
-                        hooks = new[] { new { type = "command", command = $"\"{Slash(_hookPath)}\" capture --dir \"{Slash(captures)}\" --receipt", timeout = 30 } },
-                    },
-                },
-            },
+                    ["type"] = "command",
+                    ["command"] = $"\"{Slash(_hookPath)}\" capture --dir \"{Slash(captures)}\"" + (plan?.Receipt == false ? "" : " --receipt"),
+                    ["timeout"] = 30,
+                }),
+            }),
         };
+
+        if (plan?.Claims is { } claims)
+        {
+            var claimsPath = Path.Combine(runDir, "claims.json");
+            File.WriteAllText(claimsPath, claims);
+            hooks["PreToolUse"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
+            {
+                ["matcher"] = ConnectorTools.WriteMatcher,
+                ["hooks"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["type"] = "command",
+                    ["command"] = $"\"{Slash(_hookPath)}\" guard --claims \"{Slash(claimsPath)}\"",
+                    ["timeout"] = 30,
+                }),
+            });
+        }
+
         var path = Path.Combine(runDir, "settings.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path, new System.Text.Json.Nodes.JsonObject { ["hooks"] = hooks }.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         return path;
     }
 

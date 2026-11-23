@@ -41,6 +41,20 @@ public static class ConnectorTools
         Slack + "slack_complete_file_upload",
     ];
 
+    /// <summary>Tools that read: a sending run gets none of them, so nothing it sees can steer it.</summary>
+    public static readonly IReadOnlyList<string> Reads =
+    [
+        SearchThreads, GetThread, ListDrafts, Gmail + "get_message", Gmail + "get_draft", Gmail + "list_labels",
+        Gmail + "download_gmail_attachment", ListEvents, ListCalendars, Calendar + "get_event", Calendar + "search_events",
+        Calendar + "suggest_time", SlackSearch, Slack + "slack_search_public", SlackReadThread, Slack + "slack_read_channel",
+        SlackReactions, Slack + "slack_read_user_profile", Slack + "slack_read_canvas", Slack + "slack_read_file",
+        Slack + "slack_read_list", Slack + "slack_search_channels", Slack + "slack_search_users", Slack + "slack_list_user_channels",
+        Slack + "slack_list_channel_members", Slack + "slack_search_emojis",
+    ];
+
+    /// <summary>A regex matching every write tool, for the send guard's PreToolUse matcher.</summary>
+    public static string WriteMatcher => string.Join('|', Writes.Select(System.Text.RegularExpressions.Regex.Escape));
+
     /// <summary>Built-in tools no reading run needs: the web (untrusted mail must not steer Claude to a site), the shell, files.</summary>
     public static readonly IReadOnlyList<string> ReaderDisallowedBuiltIns =
     [
