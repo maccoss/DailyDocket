@@ -77,8 +77,9 @@ dotnet test --project src/DailyDocket.Tests/DailyDocket.Tests.csproj
   `%LOCALAPPDATA%\DailyDocket`. Put a `docket.yaml` there.
 - Opt-in tests: `DAILYDOCKET_CAPTURES=<folder>` parses real captures in place;
   `DAILYDOCKET_LIVE=<folder with docket.yaml>` runs the real pull and triage jobs (read-only, costs a
-  little Claude usage) into a temporary folder; `DAILYDOCKET_INSPECT=<that folder>` prints what the
-  tabs would show.
+  little Claude usage) into a temporary folder, deleted afterward since it holds real mail;
+  `DAILYDOCKET_KEEP=1` keeps it, and `DAILYDOCKET_INSPECT=<that folder>` prints what the tabs would
+  show (delete the folder when done).
 - Publishing the hook ahead of time needs Visual Studio's C++ build tools.
 - Both `win-x64` and `win-arm64` are published; nothing may depend on x64 emulation.
 

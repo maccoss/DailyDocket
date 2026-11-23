@@ -56,6 +56,30 @@ public sealed class CalendarTests
     }
 
     [Fact]
+    public void A_join_link_opens_the_meeting_app_where_one_takes_it()
+    {
+        MeetingLinks.AppLink("https://us02web.zoom.us/j/86118486353?pwd=abc123.1")
+            .ShouldBe("zoommtg://us02web.zoom.us/join?action=join&confno=86118486353&pwd=abc123.1");
+        MeetingLinks.AppLink("https://example-society.zoom.com/j/891614781")
+            .ShouldBe("zoommtg://example-society.zoom.com/join?action=join&confno=891614781");
+        MeetingLinks.AppScheme("https://example.zoom.us/j/123456789").ShouldBe("zoommtg");
+        MeetingLinks.AppLink("https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d")
+            .ShouldBe("msteams:/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d");
+        // Not a meeting the app can open by id: the browser opens it.
+        MeetingLinks.AppLink("https://example.zoom.us/my/someone").ShouldBeNull();
+        MeetingLinks.AppLink("https://meet.google.com/abc-defg-hij").ShouldBeNull();
+        MeetingLinks.AppLink("http://example.zoom.us/j/123456789").ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_join_link_is_shown_short_and_without_its_password()
+    {
+        MeetingLinks.Short("https://us02web.zoom.us/j/86118486353?pwd=abc123.1").ShouldBe("us02web.zoom.us/j/86118486353");
+        MeetingLinks.Short("https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d").ShouldBe("Microsoft Teams meeting");
+        MeetingLinks.Short("https://meet.google.com/abc-defg-hij").ShouldBe("meet.google.com/abc-defg-hij");
+    }
+
+    [Fact]
     public void A_zoom_com_link_is_a_join_link()
     {
         // Zoom gives some organizations zoom.com addresses rather than zoom.us.

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using DailyDocket.Core.Slack;
+using DailyDocket.Core.Todos;
 using DailyDocket.Tests.Fixtures;
 
 namespace DailyDocket.Tests.Slack;
@@ -109,6 +110,43 @@ public sealed class SlackTests
         SlackRules.IsWaiting(thread, "U0000000001").ShouldBeFalse();
         // Messages outside any thread stay with the channel.
         conversations.Single(c => c.Key == "D0000000001~main").Messages.ShouldHaveSingleItem().Ts.ShouldBe("1794000000.000001");
+    }
+
+    [Fact]
+    public void A_dm_answered_in_a_thread_leaves_no_earlier_message_waiting()
+    {
+        // Pat sends two messages; Mike answers the second with Reply. The first stays in the DM's
+        // main conversation, but his reply came after it: nothing in the DM waits on him.
+        SlackMessage Dm(string from, string ts, string? thread) =>
+            new("D0000000001", "DM", "", from, from == "U0000000001" ? "Owner Person" : "Pat Example", ts, thread, null, "text");
+        var all = SlackRules.Group([
+            Dm("U0000000002", "1795400000.000001", null),
+            Dm("U0000000002", "1795400100.000001", null),
+            Dm("U0000000001", "1795450000.000001", "1795400100.000001")]);
+
+        SlackRules.WaitingOn(all, "U0000000001").ShouldBeEmpty();
+
+        // In a channel, his reply in one thread does not answer a mention elsewhere.
+        SlackMessage Ch(string from, string ts, string? thread) => Dm(from, ts, thread) with { ChannelId = "C0000000009", ChannelLabel = "#lab" };
+        var channel = SlackRules.Group([Ch("U0000000002", "1795400000.000001", null), Ch("U0000000001", "1795450000.000001", "1795300000.000001")]);
+        SlackRules.WaitingOn(channel, "U0000000001").Select(c => c.Key).ShouldBe(["C0000000009~main"]);
+    }
+
+    [Fact]
+    public void A_handled_mark_on_the_dm_still_covers_a_thread_that_moved_out_of_it()
+    {
+        SlackMessage Dm(string from, string ts, string? thread) =>
+            new("D0000000001", "DM", "", from, "Pat Example", ts, thread, null, "text");
+        var thread = SlackRules.Group([Dm("U0000000002", "1795400000.000001", null), Dm("U0000000002", "1795400050.000001", "1795400000.000001")])
+            .Single(c => c.Key == "D0000000001~1795400000.000001");
+        HandledSet Marked(string upTo) => HandledSet.Empty with
+        {
+            Slack = new Dictionary<string, HandledMark> { ["D0000000001~main"] = new("slack", "D0000000001~main", upTo, DateTimeOffset.UnixEpoch, "pc") },
+        };
+
+        Marked("1795400050.000001").CoversSlack(thread).ShouldBeTrue();
+        // A newer reply in the thread than the mark reaches: it comes back.
+        Marked("1795400010.000001").CoversSlack(thread).ShouldBeFalse();
     }
 
     [Fact]

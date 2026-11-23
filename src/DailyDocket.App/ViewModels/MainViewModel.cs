@@ -434,12 +434,59 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UndoText = null;
     }
 
+    /// <summary>
+    /// Joins a meeting: in the Zoom or Teams app when Windows has its link scheme registered, so
+    /// the click starts the meeting rather than a browser page that asks to; the https link otherwise.
+    /// </summary>
+    [RelayCommand]
+    private static void JoinMeeting(string? link)
+    {
+        if (string.IsNullOrEmpty(link))
+        {
+            return;
+        }
+
+        if (Core.Calendar.MeetingLinks.AppLink(link) is { } app && SchemeRegistered(Core.Calendar.MeetingLinks.AppScheme(link)!))
+        {
+            // A scheme can be registered with no working handler (a removed Teams leaves its key);
+            // the meeting then opens in the browser instead of failing.
+            if (Launch(app))
+            {
+                return;
+            }
+        }
+
+        Open(link);
+    }
+
+    /// <summary>True when an app on this computer handles <paramref name="scheme"/> links (zoommtg, msteams).</summary>
+    private static bool SchemeRegistered(string scheme)
+    {
+        using var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(scheme);
+        return key?.GetValue("URL Protocol") is not null;
+    }
+
     [RelayCommand]
     private static void Open(string? url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            Launch(uri.AbsoluteUri);
+        }
+    }
+
+    /// <summary>Opens a link with whatever Windows has for it; false when nothing could open it.</summary>
+    private static bool Launch(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Serilog.Log.Warning(e, "Opening a link failed");
+            return false;
         }
     }
 
