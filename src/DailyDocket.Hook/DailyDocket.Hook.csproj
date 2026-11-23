@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DailyDocket.Hook</RootNamespace>
+    <AssemblyName>DailyDocket.Hook</AssemblyName>
+    <!--
+      Claude Code starts this once per tool call, so it is published ahead of time: no JIT, a
+      start in milliseconds. It references nothing from Core (which carries ASP.NET Core) for the
+      same reason. A development build runs as an ordinary .NET program, which is fast enough.
+    -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DailyDocket.Tests" />
+  </ItemGroup>
+
+</Project>

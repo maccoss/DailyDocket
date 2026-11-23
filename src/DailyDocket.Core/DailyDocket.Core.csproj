@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DailyDocket.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      ASP.NET Core hosts the small MCP server that gives Claude the docket tools (watermarks,
+      verdicts, the outbox) and the permission prompt, on 127.0.0.1 only, as in LabOps.
+    -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DailyDocket.Tests" />
+  </ItemGroup>
+
+</Project>
