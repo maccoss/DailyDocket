@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-dark.svg">
+    <img src="assets/brand/logo-light.svg" alt="DailyDocket: your personal dashboard" width="480">
+  </picture>
+</p>
+
 # DailyDocket
 
 A Windows desktop app that puts one person's day on one screen: the week's schedule, a to-do list,

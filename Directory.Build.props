@@ -13,7 +13,7 @@
     release time; see release-notes/README.md.
   -->
   <PropertyGroup>
-    <Version>26.1.3</Version>
+    <Version>26.1.4</Version>
     <Product>DailyDocket</Product>
     <Company>MacCoss Lab, University of Washington</Company>
     <Authors>Michael MacCoss</Authors>
