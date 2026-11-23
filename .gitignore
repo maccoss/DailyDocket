@@ -13,3 +13,6 @@ spike/out/
 
 # Night-session notes and agent status files
 ai/.tmp/
+
+# Agent worktrees
+.claude/worktrees/
