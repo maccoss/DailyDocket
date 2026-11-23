@@ -88,5 +88,15 @@ public static class ConnectorTools
         "RemoteTrigger", "PushNotification", "EnterWorktree", "ExitWorktree", "ListMcpResourcesTool", "ReadMcpResourceTool",
     ];
 
-    public static IReadOnlyList<string> ReaderDisallowed => [.. Writes, .. ReaderDisallowedBuiltIns];
+    /// <summary>
+    /// Connectors no run uses, refused whole: a server name on --disallowedTools removes every tool
+    /// of that server (checked live, November 2026). Docs, Sheets and Slides began loading in
+    /// headless runs after the spike, each with tools that change files.
+    /// </summary>
+    public static readonly IReadOnlyList<string> UnusedConnectors =
+    [
+        "mcp__claude_ai_Google_Docs", "mcp__claude_ai_Google_Sheets", "mcp__claude_ai_Google_Slides",
+    ];
+
+    public static IReadOnlyList<string> ReaderDisallowed => [.. Writes, .. UnusedConnectors, .. ReaderDisallowedBuiltIns];
 }

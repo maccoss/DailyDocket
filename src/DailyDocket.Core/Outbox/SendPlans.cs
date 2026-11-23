@@ -55,6 +55,7 @@ public static class SendPlans
         // nothing the run could see can steer it.
         var disallowed = ConnectorTools.Writes.Where(w => w != call.ToolName)
             .Concat(ConnectorTools.Reads)
+            .Concat(ConnectorTools.UnusedConnectors)
             .Concat(ConnectorTools.ReaderDisallowedBuiltIns)
             .ToList();
         // The send tool itself is not on the allowlist: only the guard's explicit allow lets it run.
