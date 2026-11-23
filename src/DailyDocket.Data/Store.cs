@@ -284,7 +284,7 @@ public sealed class Store
         var me = config.Owner.SlackUserId;
         var verdicts = Verdicts("slack");
         var rows = new List<SlackRow>();
-        foreach (var conv in SlackConversations(since).Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since && handled?.CoversSlack(c.Key, c.Last.Ts) != true))
+        foreach (var conv in SlackRules.WaitingOn(SlackConversations(since), me).Where(c => c.Last.When >= since && handled?.CoversSlack(c) != true))
         {
             var last = conv.Last;
             string state;
@@ -318,8 +318,8 @@ public sealed class Store
         var verdicts = Verdicts("slack");
         return
         [
-            .. SlackConversations(since)
-                .Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since && handled?.CoversSlack(c.Key, c.Last.Ts) != true)
+            .. SlackRules.WaitingOn(SlackConversations(since), me)
+                .Where(c => c.Last.When >= since && handled?.CoversSlack(c) != true)
                 .Where(c => !(verdicts.TryGetValue(c.Key, out var v) && v.ForMessage == c.Last.Ts))
                 .OrderByDescending(c => c.Last.TsValue)
                 .Take(max)

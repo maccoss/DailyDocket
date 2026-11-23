@@ -25,6 +25,9 @@ public sealed class LivePullTests(ITestOutputHelper output)
         var config = DocketConfig.Load(Path.Combine(ConfigFolder!, "docket.yaml"));
         var zone = TimeZoneInfo.FindSystemTimeZoneById(config.Schedule.TimeZone);
         var root = Directory.CreateTempSubdirectory("dd-live-").FullName;
+        // The folder holds verbatim mail and Slack captures: deleted at the end, pass or fail, unless
+        // DAILYDOCKET_KEEP=1 keeps it for DAILYDOCKET_INSPECT.
+        using var cleanup = new LiveFolder(root, Environment.GetEnvironmentVariable("DAILYDOCKET_KEEP") == "1");
         var paths = new AppPaths(root);
         paths.EnsureCreated();
         // The hook is built beside the tests (they reference it), wherever the build output goes.
@@ -62,5 +65,26 @@ public sealed class LivePullTests(ITestOutputHelper output)
         SqliteConnection.ClearAllPools();
         outcomes.ShouldAllBe(o => o.Ok);
         schedule.ShouldNotBeEmpty();
+    }
+
+    private sealed class LiveFolder(string root, bool keep) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (keep)
+            {
+                return;
+            }
+
+            SqliteConnection.ClearAllPools();
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A log file still closing; the folder is left for the next cleanup of %TEMP%.
+            }
+        }
     }
 }

@@ -448,8 +448,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         if (Core.Calendar.MeetingLinks.AppLink(link) is { } app && SchemeRegistered(Core.Calendar.MeetingLinks.AppScheme(link)!))
         {
-            Process.Start(new ProcessStartInfo(app) { UseShellExecute = true });
-            return;
+            // A scheme can be registered with no working handler (a removed Teams leaves its key);
+            // the meeting then opens in the browser instead of failing.
+            if (Launch(app))
+            {
+                return;
+            }
         }
 
         Open(link);
@@ -467,7 +471,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            Launch(uri.AbsoluteUri);
+        }
+    }
+
+    /// <summary>Opens a link with whatever Windows has for it; false when nothing could open it.</summary>
+    private static bool Launch(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Serilog.Log.Warning(e, "Opening a link failed");
+            return false;
         }
     }
 

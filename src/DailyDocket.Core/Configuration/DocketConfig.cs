@@ -122,7 +122,8 @@ public sealed class MailConfig
 
     /// <summary>True when <paramref name="recipient"/> is one of <see cref="Groups"/> (a bare address or "Name &lt;address&gt;").</summary>
     public bool IsGroup(string? recipient) =>
-        !string.IsNullOrEmpty(recipient) && Groups.Any(g => g.Trim().Length > 0 && recipient.Contains(g.Trim(), StringComparison.OrdinalIgnoreCase));
+        !string.IsNullOrEmpty(recipient)
+        && Groups.Any(g => g.Trim().Length > 0 && string.Equals(Outbox.OutboxRules.Address(recipient), g.Trim(), StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed class SlackConfig

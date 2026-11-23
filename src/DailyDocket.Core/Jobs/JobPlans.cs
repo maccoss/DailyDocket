@@ -80,10 +80,11 @@ public static partial class JobPlans
 
     /// <summary>
     /// The inbox sweep's query, without its dates: the inbox outside Promotions, Updates, Social and
-    /// Forums, plus Forums mail to or copied to one of <see cref="MailConfig.Groups"/>.
+    /// Forums, plus Forums mail to one of <see cref="MailConfig.Groups"/>. Only To: mail merely
+    /// copied to a group counts as being kept informed (MailRules), so reading it would be wasted.
     /// </summary>
     /// <remarks>
-    /// Gmail's braces are OR: {-category:forums to:g cc:g} keeps a thread that is outside Forums or
+    /// Gmail's braces are OR: {-category:forums to:g} keeps a thread that is outside Forums or
     /// addressed to the group (checked live: the same day's threads, plus the group's request). An
     /// address with a space, quote, brace or parenthesis is left out, so it cannot change the query.
     /// </remarks>
@@ -96,7 +97,7 @@ public static partial class JobPlans
             .ToList();
         var forums = groups.Count == 0
             ? "-category:forums"
-            : "{-category:forums " + string.Join(' ', groups.Select(g => $"to:{g} cc:{g}")) + "}";
+            : "{-category:forums " + string.Join(' ', groups.Select(g => $"to:{g}")) + "}";
         return $"in:inbox -category:promotions -category:updates -category:social {forums}";
     }
 

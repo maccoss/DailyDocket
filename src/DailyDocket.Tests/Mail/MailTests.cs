@@ -98,6 +98,10 @@ public sealed class MailRulesTests
         MailRules.Classify(request, false, config).Category.ShouldBe(MailCategory.Informed);
         config.Mail.Groups = ["services@lab.example.org"];
         MailRules.Classify(request, false, config).Category.ShouldBe(MailCategory.Open);
+
+        // Only that address: one that merely contains it is someone else.
+        config.Mail.IsGroup("notservices@lab.example.org").ShouldBeFalse();
+        config.Mail.IsGroup("Lab Services <SERVICES@lab.example.org>").ShouldBeTrue();
     }
 
     [Fact]

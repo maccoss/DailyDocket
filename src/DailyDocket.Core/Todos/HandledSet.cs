@@ -11,4 +11,18 @@ public sealed record HandledSet(IReadOnlyDictionary<string, HandledMark> Email, 
 
     public bool CoversSlack(string key, string lastTs) =>
         Slack.TryGetValue(key, out var mark) && TodoRules.CoversSlack(mark, lastTs);
+
+    /// <summary>
+    /// A Slack conversation is handled by a mark on itself, or, for a thread, by one on its channel
+    /// outside threads that reaches past the thread's newest message.
+    /// </summary>
+    /// <remarks>
+    /// A thread's first message used to be grouped with channel~main, where its Handled mark was
+    /// made; it now belongs to the thread (SlackRules.Group), which has its own key. Without this, a
+    /// conversation he had handled came back, and was paid for in triage again (code review,
+    /// November 2026).
+    /// </remarks>
+    public bool CoversSlack(DailyDocket.Core.Slack.SlackConversation conversation) =>
+        CoversSlack(conversation.Key, conversation.Last.Ts)
+        || (conversation.ThreadTs is not null && CoversSlack(DailyDocket.Core.Slack.SlackRules.ConversationKey(conversation.ChannelId, null), conversation.Last.Ts));
 }

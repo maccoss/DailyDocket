@@ -77,6 +77,34 @@ public static partial class SlackRules
         ];
     }
 
+    /// <summary>
+    /// The conversations waiting on him: someone else spoke last, and, in a DM or group DM, he has
+    /// not written anywhere in it since (a reply in one of its threads answers the DM itself).
+    /// </summary>
+    /// <remarks>
+    /// Once a thread's first message is grouped with its thread, an earlier message in the DM
+    /// became the DM's last word: two messages, the second answered with Reply, left the first
+    /// listed again (code review, November 2026).
+    /// </remarks>
+    public static IReadOnlyList<SlackConversation> WaitingOn(IReadOnlyList<SlackConversation> conversations, string myUserId)
+    {
+        var mineByChannel = conversations
+            .SelectMany(c => c.Messages)
+            .Where(m => m.FromId == myUserId)
+            .GroupBy(m => m.ChannelId)
+            .ToDictionary(g => g.Key, g => g.Max(m => m.TsValue));
+        return
+        [
+            .. conversations.Where(c =>
+                IsWaiting(c, myUserId)
+                && !(c.ThreadTs is null && IsPrivate(c.Last)
+                     && mineByChannel.TryGetValue(c.ChannelId, out var mine) && mine > c.Last.TsValue)),
+        ];
+    }
+
+    private static bool IsPrivate(SlackMessage m) =>
+        m.IsDm || m.ChannelLabel.Equals("Group DM", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Waiting on him: someone else spoke last. A reaction from him is checked separately.</summary>
     public static bool IsWaiting(SlackConversation conversation, string myUserId) =>
         conversation.Last.FromId != myUserId;

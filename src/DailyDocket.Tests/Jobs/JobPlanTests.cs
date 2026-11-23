@@ -97,7 +97,7 @@ public sealed class JobPlanTests
 
         var mail = new Core.Configuration.MailConfig { Groups = ["services@lab.example.org", " services@lab.example.org ", "bad address@x.org", "x@y.org}"] };
         JobPlans.InboxQuery(mail)
-            .ShouldBe("in:inbox -category:promotions -category:updates -category:social {-category:forums to:services@lab.example.org cc:services@lab.example.org}");
+            .ShouldBe("in:inbox -category:promotions -category:updates -category:social {-category:forums to:services@lab.example.org}");
     }
 
     [Fact]
