@@ -187,7 +187,9 @@ public static partial class MailRules
 
         // Copied on a conversation between other people that he has never written in: being kept
         // informed, not being asked. The commonest kind of row that looked like work and was not.
-        var directTo = last.To.Any(config.Owner.IsMe);
+        // Mail to a group he answers for (the lab's services address) is addressed to him: its
+        // requests came to the group, and as "informed" they were hidden (November 2026).
+        var directTo = last.To.Any(a => config.Owner.IsMe(a) || config.Mail.IsGroup(a));
         if (!directTo && lastMine < 0)
         {
             return Result(MailCategory.Informed);

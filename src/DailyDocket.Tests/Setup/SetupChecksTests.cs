@@ -150,5 +150,16 @@ public sealed class UpdatePolicyTests
 
         var message = UpdatePolicy.InstallFailedMessage("26.2.0");
         UpdatePolicy.TextFor(new UpdateStatus(UpdateStage.ReadyToApply, "26.2.0", 100, message)).ShouldBe(message);
+        UpdatePolicy.NoteFor(new UpdateStatus(UpdateStage.ReadyToApply, "26.2.0", 100, message)).ShouldBe(message);
+    }
+
+    [Fact]
+    public void The_upper_right_button_names_the_version_and_needs_no_note_when_all_is_well()
+    {
+        var ready = new UpdateStatus(UpdateStage.ReadyToApply, "26.1.2", 100);
+
+        UpdatePolicy.ButtonFor(ready).ShouldBe("Restart to update to 26.1.2");
+        UpdatePolicy.NoteFor(ready).ShouldBeNull();
+        UpdatePolicy.NoteFor(new UpdateStatus(UpdateStage.Failed, Error: "No such host is known.")).ShouldBeNull();
     }
 }

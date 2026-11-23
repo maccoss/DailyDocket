@@ -23,6 +23,8 @@ calendars:
 mail:
   windowDays: 30
   deepDays: 90                         # the nightly deep sweep reads the inbox back this far
+  groups:                              # group addresses you answer for: their mail is read even in Gmail's Forums
+    - services@lab.example.org
   systemSenders:                      # added to the generic machine senders
     - alerts@example.com
     - "@newsletter.example.com"

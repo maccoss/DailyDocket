@@ -92,6 +92,26 @@ public sealed class SlackTests
     }
 
     [Fact]
+    public void A_reply_in_a_thread_answers_the_message_that_started_it()
+    {
+        // Search reports the DM message with no thread, and his "Reply" on it with that message's ts
+        // as thread_ts: the two are one conversation, and his reply is its last word.
+        SlackMessage Dm(string from, string ts, string? thread) =>
+            new("D0000000001", "DM", "", from, from == "U0000000001" ? "Owner Person" : "Pat Example", ts, thread, null, "text");
+        var question = Dm("U0000000002", "1794514266.666729", null);
+        var answer = Dm("U0000000001", "1795450185.432269", "1794514266.666729");
+        var unrelated = Dm("U0000000002", "1794000000.000001", null);
+
+        var conversations = SlackRules.Group([question, answer, unrelated]);
+
+        var thread = conversations.Single(c => c.Key == "D0000000001~1794514266.666729");
+        thread.Messages.Select(m => m.Ts).ShouldBe(["1794514266.666729", "1795450185.432269"]);
+        SlackRules.IsWaiting(thread, "U0000000001").ShouldBeFalse();
+        // Messages outside any thread stay with the channel.
+        conversations.Single(c => c.Key == "D0000000001~main").Messages.ShouldHaveSingleItem().Ts.ShouldBe("1794000000.000001");
+    }
+
+    [Fact]
     public void His_message_last_means_nothing_is_waiting()
     {
         var all = SlackParser.ParseSearch(Envelope()).Messages.ToList();

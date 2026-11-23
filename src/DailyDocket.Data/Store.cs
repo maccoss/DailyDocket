@@ -258,7 +258,12 @@ public sealed class Store
     public SlackConversation? Conversation(string key)
     {
         using var c = _db.Connect();
-        var messages = c.Query("SELECT * FROM slack_message WHERE conversation_key = @key", new { key })
+        // A thread's first message is stored with the channel (search gives it no thread); it is
+        // read with its thread, as SlackRules.Group places it.
+        var parts = key.Split('~', 2);
+        var messages = c.Query(
+                "SELECT * FROM slack_message WHERE conversation_key = @key OR (channel_id = @channel AND ts = @ts)",
+                new { key, channel = parts[0], ts = parts.Length == 2 ? parts[1] : "" })
             .Select(r => new SlackMessage(
                 (string)r.channel_id,
                 (string)r.channel_label,
@@ -269,7 +274,8 @@ public sealed class Store
                 (string?)r.thread_ts,
                 (string?)r.permalink,
                 (string)r.text));
-        return SlackRules.Group(messages).FirstOrDefault();
+        var conversations = SlackRules.Group(messages);
+        return conversations.FirstOrDefault(x => x.Key == key) ?? conversations.FirstOrDefault();
     }
 
     /// <summary>The Slack tab: conversations waiting on him that Claude says need a reply, oldest first.</summary>

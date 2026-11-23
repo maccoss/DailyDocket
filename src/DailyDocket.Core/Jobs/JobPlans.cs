@@ -42,7 +42,7 @@ public sealed record PrepRequest(IReadOnlyList<PrepTarget> Targets, Func<PrepTar
 /// The pull and triage runs. Claude makes exactly the calls listed, with exactly these arguments:
 /// the app decides what to fetch, Claude only pages through it and never retypes what it fetched.
 /// </summary>
-public static class JobPlans
+public static partial class JobPlans
 {
     public const string Calendar = "calendar";
     public const string Mail = "mail";
@@ -78,7 +78,30 @@ public static class JobPlans
     /// </summary>
     private static readonly JsonSerializerOptions Json = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    private const string InboxQuery ="in:inbox -category:promotions -category:updates -category:forums -category:social";
+    /// <summary>
+    /// The inbox sweep's query, without its dates: the inbox outside Promotions, Updates, Social and
+    /// Forums, plus Forums mail to or copied to one of <see cref="MailConfig.Groups"/>.
+    /// </summary>
+    /// <remarks>
+    /// Gmail's braces are OR: {-category:forums to:g cc:g} keeps a thread that is outside Forums or
+    /// addressed to the group (checked live: the same day's threads, plus the group's request). An
+    /// address with a space, quote, brace or parenthesis is left out, so it cannot change the query.
+    /// </remarks>
+    internal static string InboxQuery(MailConfig mail)
+    {
+        var groups = mail.Groups
+            .Select(g => g.Trim())
+            .Where(g => GroupAddress().IsMatch(g))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var forums = groups.Count == 0
+            ? "-category:forums"
+            : "{-category:forums " + string.Join(' ', groups.Select(g => $"to:{g} cc:{g}")) + "}";
+        return $"in:inbox -category:promotions -category:updates -category:social {forums}";
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[^\s""'{}()]+@[^\s""'{}()]+$")]
+    private static partial System.Text.RegularExpressions.Regex GroupAddress();
 
     private static string Preamble(string job, IEnumerable<string> tools) =>
         $"""
@@ -122,7 +145,7 @@ public static class JobPlans
         var full = IsDue(lastFullSweep, now);
         var days = full ? config.Mail.WindowDays : IncrementalDays;
         string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.ListDrafts, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
-        var searches = string.Join('\n', DaySearches(now, zone, days, 0).Select(a => "   - " + a));
+        var searches = string.Join('\n', DaySearches(now, zone, InboxQuery(config.Mail), days, 0).Select(a => "   - " + a));
         var drafts = JsonSerializer.Serialize(new { pageSize = 50, view = "DRAFT_VIEW_METADATA_ONLY" }, Json);
 
         var prompt = Preamble("mail pull", tools) +
@@ -148,14 +171,14 @@ public static class JobPlans
     /// the connector returned nothing for after:/before: given in seconds (checked live). A thread
     /// is found on each day it had a message; the app merges them by thread id.
     /// </remarks>
-    internal static IReadOnlyList<string> DaySearches(DateTimeOffset now, TimeZoneInfo zone, int fromDaysAgo, int toDaysAgo)
+    internal static IReadOnlyList<string> DaySearches(DateTimeOffset now, TimeZoneInfo zone, string inbox, int fromDaysAgo, int toDaysAgo)
     {
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var searches = new List<string>();
         for (var ago = toDaysAgo; ago <= fromDaysAgo; ago++)
         {
             var day = today.AddDays(-ago);
-            var query = $"{InboxQuery} after:{GmailDate(day)} before:{GmailDate(day.AddDays(1))}";
+            var query = $"{inbox} after:{GmailDate(day)} before:{GmailDate(day.AddDays(1))}";
             searches.Add(JsonSerializer.Serialize(new { query, pageSize = SearchPageSize, view = "THREAD_VIEW_SUMMARY" }, Json));
         }
 
@@ -277,7 +300,7 @@ public static class JobPlans
         string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
         var older = Math.Max(1, config.Mail.WindowDays);
         var newer = Math.Max(older + 1, config.Mail.DeepDays);
-        var searches = string.Join('\n', DaySearches(now, zone, newer, older + 1).Select(a => "   - " + a));
+        var searches = string.Join('\n', DaySearches(now, zone, InboxQuery(config.Mail), newer, older + 1).Select(a => "   - " + a));
 
         var prompt = Preamble("nightly deep sweep", tools) +
             $"""

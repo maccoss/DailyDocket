@@ -108,6 +108,21 @@ public sealed class MailConfig
 
     /// <summary>Senders that are machines, added to the generic list in the rules.</summary>
     public List<string> SystemSenders { get; set; } = [];
+
+    /// <summary>
+    /// Group addresses he answers for (a lab's services@ address): mail to or copied to them is read
+    /// even when Gmail files it under Forums, which the inbox sweep otherwise leaves out.
+    /// </summary>
+    /// <remarks>
+    /// Gmail puts mail that arrives through a Google Group in Forums, so a request sent to the
+    /// lab's services address was never seen (November 2026). Forums as a whole was not added back:
+    /// it is mostly department lists and notifications, about 150 threads a month to judge.
+    /// </remarks>
+    public List<string> Groups { get; set; } = [];
+
+    /// <summary>True when <paramref name="recipient"/> is one of <see cref="Groups"/> (a bare address or "Name &lt;address&gt;").</summary>
+    public bool IsGroup(string? recipient) =>
+        !string.IsNullOrEmpty(recipient) && Groups.Any(g => g.Trim().Length > 0 && recipient.Contains(g.Trim(), StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed class SlackConfig

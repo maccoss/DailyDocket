@@ -14,6 +14,18 @@
                 <TextBlock DockPanel.Dock="Left" Text="DailyDocket" FontFamily="Georgia" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Bottom" />
                 <TextBlock DockPanel.Dock="Left" Text="{Binding Today}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" Margin="16,0,0,4" VerticalAlignment="Bottom" />
                 <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom" ToolTip="Sync calendar, mail and Slack now" />
+                <!-- An update is downloaded: upper right, where it is seen (LabOps' place for it); it
+                     installs only when pressed. Its DataContext is the UpdateBarViewModel (set in code). -->
+                <StackPanel x:Name="UpdateBar" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,12,0"
+                            Visibility="{Binding IsReady, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding Note}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" MaxWidth="420" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock.Visibility>
+                            <Binding Path="Note" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                        </TextBlock.Visibility>
+                    </TextBlock>
+                    <Button Content="{Binding Label}" Command="{Binding RestartCommand}" Style="{StaticResource PrimaryButton}"
+                            ToolTip="Close DailyDocket, install the update and open it again" />
+                </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="Syncing..." Style="{StaticResource Muted}" Margin="0,0,12,6" VerticalAlignment="Bottom"
                            Visibility="{Binding IsSyncing, Converter={StaticResource BoolToVisibility}}" />
             </DockPanel>
@@ -24,15 +36,6 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding Version, StringFormat=v{0}}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" />
                 <TextBlock Text="{Binding Status}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-            </DockPanel>
-        </Border>
-
-        <!-- An update is downloaded: it installs only when Restart is pressed. Its DataContext is the UpdateBarViewModel (set in code). -->
-        <Border x:Name="UpdateBar" DockPanel.Dock="Bottom" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
-                Padding="24,6" Visibility="{Binding IsReady, Converter={StaticResource BoolToVisibility}}">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Restart" Command="{Binding RestartCommand}" ToolTip="Close DailyDocket, install the update and open it again" />
-                <TextBlock Text="{Binding Text}" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
             </DockPanel>
         </Border>
 

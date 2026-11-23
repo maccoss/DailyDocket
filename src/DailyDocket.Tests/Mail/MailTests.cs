@@ -89,6 +89,18 @@ public sealed class MailRulesTests
     }
 
     [Fact]
+    public void Mail_to_a_group_he_answers_for_is_addressed_to_him()
+    {
+        // A request to the lab's services address names the group, not him, in To.
+        var config = Fixture.Config();
+        var request = new[] { Msg("1", "Erin Example <erin@example.edu>", 1, ["services@lab.example.org"]) };
+
+        MailRules.Classify(request, false, config).Category.ShouldBe(MailCategory.Informed);
+        config.Mail.Groups = ["services@lab.example.org"];
+        MailRules.Classify(request, false, config).Category.ShouldBe(MailCategory.Open);
+    }
+
+    [Fact]
     public void Copied_on_a_conversation_he_did_write_in_is_still_open()
     {
         var c = MailRules.Classify(
