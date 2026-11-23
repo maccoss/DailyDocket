@@ -39,7 +39,7 @@ public static class PrepRules
         var calendar = config.Calendars.FirstOrDefault(c => c.Key == e.CalendarKey) ?? new CalendarConfig { Key = e.CalendarKey, Primary = true };
         if (!CalendarRules.IsShown(e))
         {
-            return "declined or cancelled";
+            return "declined or canceled";
         }
 
         if (CalendarRules.IsBackground(e))

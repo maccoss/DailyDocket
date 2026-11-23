@@ -67,7 +67,7 @@ public sealed class OutboxWorker
         }
     }
 
-    /// <summary>Checks the queue every few seconds until cancelled.</summary>
+    /// <summary>Checks the queue every few seconds until canceled.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         RecoverInterrupted();

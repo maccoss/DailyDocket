@@ -137,6 +137,12 @@ public sealed partial class MainViewModel
         {
             return; // Closing.
         }
+        catch (Exception ex)
+        {
+            // Said under the event it was for, rather than as an app-wide error dialog.
+            _log.LogWarning(ex, "Prep now failed for event {EventId}", e.EventId);
+            _prepNotes[e.EventId] = $"The brief could not be written: {ex.Message} Try again later.";
+        }
         finally
         {
             _prepping.Remove(e.EventId);

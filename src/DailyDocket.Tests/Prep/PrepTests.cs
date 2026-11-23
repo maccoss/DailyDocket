@@ -76,7 +76,7 @@ public sealed class PrepTests
     [Fact]
     public void Each_skip_says_why()
     {
-        PrepRules.Skip(Event("x", At(27, 10), response: "declined"), Config()).ShouldBe("declined or cancelled");
+        PrepRules.Skip(Event("x", At(27, 10), response: "declined"), Config()).ShouldBe("declined or canceled");
         PrepRules.Skip(Event("x", At(27, 10), calendar: "home"), Config()).ShouldBe("calendar not prepped");
         PrepRules.Skip(Event("x", At(27, 10), calendar: "dept", response: "tentative"), Config()).ShouldBe("secondary calendar, not accepted");
         PrepRules.Skip(Event("x", At(27, 10), guests: 0), Config()).ShouldBe("no one else invited");

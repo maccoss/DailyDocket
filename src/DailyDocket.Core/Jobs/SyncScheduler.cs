@@ -85,7 +85,7 @@ public sealed class SyncScheduler : IDisposable
         }
     }
 
-    /// <summary>Syncs now and then every <see cref="AppSettings.PullIntervalMinutes"/> until cancelled.</summary>
+    /// <summary>Syncs now and then every <see cref="AppSettings.PullIntervalMinutes"/> until canceled.</summary>
     public async Task RunPeriodicallyAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)

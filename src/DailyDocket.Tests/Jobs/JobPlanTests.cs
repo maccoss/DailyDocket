@@ -160,13 +160,17 @@ public sealed class JobPlanTests
         (await JobPlans.TriageAllAsync(store, Judge, "sonnet", 25)).Count.ShouldBe(3);
         runs.ShouldBe(3);
 
-        // A run that leaves its conversation unjudged is not repeated in a loop.
+        // A run that leaves its conversation unjudged does not block the ones behind it: the
+        // conversation is shown as needing a reply, and the loop goes on.
         store.Pending.AddRange(["d", "e"]);
-        (await JobPlans.TriageAllAsync(store, p => Task.FromResult(new JobOutcome(p.Job, true, null, 0, null)), "sonnet", 25)).Count.ShouldBe(1);
+        (await JobPlans.TriageAllAsync(store, p => Task.FromResult(new JobOutcome(p.Job, true, null, 0, null)), "sonnet", 25)).Count.ShouldBe(2);
+        store.Recorded.ShouldBe([("d", true, JobPlans.UnjudgedWhy), ("e", true, JobPlans.UnjudgedWhy)]);
 
-        // The cap leaves the rest for the next sync.
+        // A failed run stops the loop, and the cap leaves the rest for the next sync.
+        store.Pending.AddRange(["f", "g", "h"]);
+        (await JobPlans.TriageAllAsync(store, p => Task.FromResult(new JobOutcome(p.Job, false, "offline", 0, null)), "sonnet", 25)).Count.ShouldBe(1);
         (await JobPlans.TriageAllAsync(store, Judge, "sonnet", 1)).Count.ShouldBe(1);
-        store.Pending.ShouldBe(["e"]);
+        store.Pending.ShouldBe(["g", "h"]);
     }
 
     private sealed class QueueStore(List<string> pending) : IJobStore
@@ -180,8 +184,12 @@ public sealed class JobPlanTests
         public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max) =>
             [.. Pending.Take(max).Select(k => new TriageItem("mail", k, "m-" + k, "transcript"))];
 
+        public List<(string Key, bool NeedsReply, string Why)> Recorded { get; } = [];
+
         public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why)
         {
+            Recorded.Add((key, needsReply, why));
+            Pending.Remove(key);
         }
 
         public string? Watermark(string source, string scope) => null;

@@ -168,8 +168,14 @@ public static class JobPlans
         };
     }
 
-    /// <summary>A sync judges at most this many conversations; the rest wait for the next sync.</summary>
-    public const int TriageRunsPerSync = 25;
+    /// <summary>The reason shown for a conversation Claude did not judge.</summary>
+    public const string UnjudgedWhy = "Claude could not judge this; read it yourself";
+
+    /// <summary>
+    /// A sync judges at most this many conversations (about three minutes of runs, holding the
+    /// sync lock, so Refresh is not kept waiting long); the rest wait for the next sync.
+    /// </summary>
+    public const int TriageRunsPerSync = 10;
 
     /// <summary>
     /// Judges waiting conversations one run each (see JobRunner's RunContext.TriageBatch for why),
@@ -189,10 +195,19 @@ public static class JobPlans
 
             var outcome = await run(TriageRun(model)).ConfigureAwait(false);
             outcomes.Add(outcome);
-            var after = store.TriageBatch(DateTimeOffset.UtcNow, 1).FirstOrDefault();
-            if (!outcome.Ok || (after is not null && after.Key == next.Key && after.ForMessage == next.ForMessage))
+            if (!outcome.Ok)
             {
-                break;
+                break; // offline, signed out, or the run broke: the rest wait for the next sync
+            }
+
+            var after = store.TriageBatch(DateTimeOffset.UtcNow, 1).FirstOrDefault();
+            if (after is not null && after.Source == next.Source && after.Key == next.Key && after.ForMessage == next.ForMessage)
+            {
+                // The run ended well but left its conversation unjudged (an email can tell Claude
+                // not to record anything). Stopping would leave it first in line at every sync, paid
+                // for each time, with every older conversation behind it never judged. It is shown
+                // instead, as needing a reply, until someone writes in it again.
+                store.RecordVerdict(next.Source, next.Key, next.ForMessage, true, UnjudgedWhy);
             }
         }
 

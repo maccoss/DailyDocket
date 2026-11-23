@@ -76,7 +76,7 @@ public sealed class SharedJobs
 
     public NightlyJobs Nightly { get; }
 
-    /// <summary>Starts checking the nightly schedule; runs until <paramref name="stop"/> is cancelled.</summary>
+    /// <summary>Starts checking the nightly schedule; runs until <paramref name="stop"/> is canceled.</summary>
     public void Start(CancellationToken stop) => _ = RunAsync(stop);
 
     private async Task RunAsync(CancellationToken stop)

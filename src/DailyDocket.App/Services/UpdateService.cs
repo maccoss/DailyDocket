@@ -171,7 +171,7 @@ public sealed class UpdateService : IDisposable
         return true;
     }
 
-    // Cancelled but not disposed: a check still finishing holds its token, and registering on a
+    // Canceled but not disposed: a check still finishing holds its token, and registering on a
     // disposed source's token throws.
     public void Dispose() => _stop.Cancel();
 

@@ -123,7 +123,7 @@ public sealed class ScheduleConfig
 }
 
 /// <summary>
-/// Which events meeting prep covers. Declined, cancelled and all-day events, and meetings with no
+/// Which events meeting prep covers. Declined, canceled and all-day events, and meetings with no
 /// one else invited, are always skipped; a secondary calendar's events (primary: false) only when
 /// the owner accepted them. Here so the rules can change without a release.
 /// </summary>

@@ -357,7 +357,7 @@ public sealed class NightlyJobs
         }
     }
 
-    /// <summary>Checks the schedule now and every <see cref="CheckEvery"/> until cancelled.</summary>
+    /// <summary>Checks the schedule now and every <see cref="CheckEvery"/> until canceled.</summary>
     public async Task RunPeriodicallyAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
