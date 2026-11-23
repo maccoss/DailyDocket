@@ -126,10 +126,7 @@ public sealed class SyncScheduler : IDisposable
 
         var outcomes = pulls.ToList();
         BeforeTriage?.Invoke();
-        if (_store.TriageBatch(now, 1).Count > 0)
-        {
-            outcomes.Add(await Run(JobPlans.TriageRun(settings.JudgmentModel)).ConfigureAwait(false));
-        }
+        outcomes.AddRange(await JobPlans.TriageAllAsync(_store, Run, settings.JudgmentModel, JobPlans.TriageRunsPerSync).ConfigureAwait(false));
 
         _store.PurgeCaptures(now);
         return new SyncResult(false, outcomes, DateTimeOffset.UtcNow);

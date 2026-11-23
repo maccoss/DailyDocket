@@ -161,6 +161,8 @@ impact first, empty headings deleted at release.
 
 - A meeting whose invitation came from another calendar system could have an event id too long for Git on Windows to save as a file name, and once its brief was written every later to-do sync failed. Such a brief is now saved under a short name.
 
+- One email written to trick Claude could have the other conversations judged with it marked as needing no reply, hiding them from the Email and Slack tabs. Claude now judges each conversation on its own.
+
 ## Performance
 
 ## Breaking Changes

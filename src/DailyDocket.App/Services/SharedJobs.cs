@@ -158,10 +158,8 @@ public sealed class SharedJobs
 
         var outcomes = new List<JobOutcome> { await runner.RunAsync(JobPlans.DeepSweepRun(config, now, settings.PullModel), cancellationToken) };
         provider.GetRequiredService<SharedJobs>().ImportVerdicts();
-        if (jobs.TriageBatch(now, 1).Count > 0)
-        {
-            outcomes.Add(await runner.RunAsync(JobPlans.TriageRun(settings.JudgmentModel), cancellationToken));
-        }
+        // The sweep can find many old conversations; the night has time for more runs than a sync.
+        outcomes.AddRange(await JobPlans.TriageAllAsync(jobs, plan => runner.RunAsync(plan, cancellationToken), settings.JudgmentModel, 150));
 
         return outcomes;
     }

@@ -42,9 +42,11 @@ public sealed class LivePullTests(ITestOutputHelper output)
             runner.RunAsync(JobPlans.CalendarPull(config, now, zone, "haiku")),
             runner.RunAsync(JobPlans.MailPull(config, now, null, "haiku")),
             runner.RunAsync(JobPlans.SlackPull(config, now, zone, null, "haiku")));
-        var triage = await runner.RunAsync(JobPlans.TriageRun("sonnet"));
+        // One conversation per run: a few runs show the per-conversation cost without judging them all.
+        var triage = await JobPlans.TriageAllAsync(jobs, plan => runner.RunAsync(plan), "sonnet", 5);
+        output.WriteLine($"triage runs={triage.Count} total cost={triage.Sum(o => o.CostUsd ?? 0):0.000} left={jobs.TriageBatch(DateTimeOffset.UtcNow, 1000).Count}");
 
-        foreach (var o in outcomes.Append(triage))
+        foreach (var o in outcomes.Concat(triage))
         {
             output.WriteLine($"{o.Job}: {(o.Ok ? "ok" : "FAILED")} captures={o.Captured} cost={o.CostUsd:0.000} {o.Detail}");
         }

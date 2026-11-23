@@ -98,6 +98,7 @@ public sealed class JobRunner
                 SettingSources = "local",
                 MaxTurns = plan.MaxTurns,
                 NoSessionPersistence = true,
+                SystemPrompt = plan.SystemPrompt,
                 Environment = Environment(),
             };
 
@@ -361,7 +362,16 @@ public sealed class JobRunner
             return _store.ThreadsToRead(seenSince, JobPlans.ThreadsPerRun);
         }
 
-        public IReadOnlyList<TriageItem> TriageBatch() => _store.TriageBatch(DateTimeOffset.UtcNow, 15);
+        private int _triageServed;
+
+        /// <summary>
+        /// One conversation per run, served once. A transcript is written by whoever sent it, and
+        /// a batch put every transcript in one context, so one email written to steer Claude could
+        /// have its other conversations marked "no reply needed" and hidden. With one item per run
+        /// (and record_verdicts accepting only issued items) an email can only misjudge itself.
+        /// </summary>
+        public IReadOnlyList<TriageItem> TriageBatch() =>
+            Interlocked.Exchange(ref _triageServed, 1) == 0 ? _store.TriageBatch(DateTimeOffset.UtcNow, 1) : [];
 
         public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why) =>
             _store.RecordVerdict(source, key, forMessage, needsReply, why);

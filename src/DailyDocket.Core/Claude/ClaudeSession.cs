@@ -60,6 +60,12 @@ public sealed record ClaudeSessionOptions
     /// </summary>
     public bool NoSessionPersistence { get; init; }
 
+    /// <summary>
+    /// Replaces Claude Code's own system prompt (written for coding sessions, and long). A run
+    /// that judges one conversation pays for that prompt every time; its own short one is enough.
+    /// </summary>
+    public string? SystemPrompt { get; init; }
+
     public IReadOnlyDictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
 
     /// <summary>The command line, built in one place so a test can check it.</summary>
@@ -132,6 +138,11 @@ public sealed record ClaudeSessionOptions
         if (MaxTurns is { } turns)
         {
             args.AddRange(["--max-turns", turns.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+        }
+
+        if (SystemPrompt is not null)
+        {
+            args.AddRange(["--system-prompt", SystemPrompt]);
         }
 
         if (NoSessionPersistence)

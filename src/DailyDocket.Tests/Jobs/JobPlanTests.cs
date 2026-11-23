@@ -144,6 +144,63 @@ public sealed class JobPlanTests
         }
     }
 
+    [Fact]
+    public async Task Triage_judges_one_conversation_per_run_and_stops_when_one_is_stuck()
+    {
+        var store = new QueueStore(["a", "b", "c"]);
+        var runs = 0;
+        Task<JobOutcome> Judge(JobPlan plan)
+        {
+            runs++;
+            plan.Prompt.ShouldContain("returns one conversation");
+            store.Pending.RemoveAt(0);
+            return Task.FromResult(new JobOutcome(plan.Job, true, null, 0, 0.03m));
+        }
+
+        (await JobPlans.TriageAllAsync(store, Judge, "sonnet", 25)).Count.ShouldBe(3);
+        runs.ShouldBe(3);
+
+        // A run that leaves its conversation unjudged is not repeated in a loop.
+        store.Pending.AddRange(["d", "e"]);
+        (await JobPlans.TriageAllAsync(store, p => Task.FromResult(new JobOutcome(p.Job, true, null, 0, null)), "sonnet", 25)).Count.ShouldBe(1);
+
+        // The cap leaves the rest for the next sync.
+        (await JobPlans.TriageAllAsync(store, Judge, "sonnet", 1)).Count.ShouldBe(1);
+        store.Pending.ShouldBe(["e"]);
+    }
+
+    private sealed class QueueStore(List<string> pending) : IJobStore
+    {
+        public List<string> Pending { get; } = pending;
+
+        public int IngestFolder(string runId, string folder) => 0;
+
+        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max) => [];
+
+        public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max) =>
+            [.. Pending.Take(max).Select(k => new TriageItem("mail", k, "m-" + k, "transcript"))];
+
+        public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why)
+        {
+        }
+
+        public string? Watermark(string source, string scope) => null;
+
+        public void SetWatermark(string source, string scope, string value)
+        {
+        }
+
+        public void StartRun(string id, string job, DateTimeOffset at)
+        {
+        }
+
+        public void FinishRun(string id, string? sessionId, string outcome, string? detail, double? costUsd)
+        {
+        }
+
+        public int PurgeCaptures(DateTimeOffset now) => 0;
+    }
+
     private sealed class RecordingStore : IJobStore
     {
         public string? Finished { get; private set; }
