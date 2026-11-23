@@ -3,6 +3,7 @@ using System.Text.Json;
 using DailyDocket.Core.Claude;
 using DailyDocket.Core.Configuration;
 using DailyDocket.Core.Infrastructure;
+using DailyDocket.Core.Prep;
 using DailyDocket.Core.Processes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -79,7 +80,7 @@ public sealed class JobRunner
                 throw new FileNotFoundException($"DailyDocket.Hook.exe is missing ({_hookPath}), so the {plan.Job} sync cannot save what it reads. Reinstall DailyDocket.");
             }
 
-            var context = new RunContext(_store, _config, runId, captures);
+            var context = new RunContext(_store, _config, runId, captures) { Prep = plan.Prep };
             var tools = new AppTools { Run = context };
             await using var server = await AppToolServer.StartAsync(tools, cancellationToken).ConfigureAwait(false);
 
@@ -364,6 +365,13 @@ public sealed class JobRunner
 
         public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why) =>
             _store.RecordVerdict(source, key, forMessage, needsReply, why);
+
+        public PrepRequest? Prep { get; init; }
+
+        public IReadOnlyList<PrepTarget> PrepTargets => Prep?.Targets ?? [];
+
+        public string SaveBrief(PrepTarget target, MeetingBrief brief) =>
+            Prep is { } prep ? prep.Save(target, brief) : throw new InvalidOperationException("This run does not write briefs.");
     }
 }
 

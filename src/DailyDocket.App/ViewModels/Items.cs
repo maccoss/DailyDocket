@@ -10,8 +10,15 @@ public sealed record BannerItem(string Title, string Tag, string? Link);
 /// <param name="Quiet">From a secondary calendar (department events): present, but not his commitment.</param>
 /// <param name="CanRespond">An invitation (he is an attendee): Accept, Tentative and Decline apply.</param>
 /// <param name="Response">His response as the calendar last reported it, or the one on its way out.</param>
+/// <param name="Brief">The meeting brief from the data repository, when one exists.</param>
+/// <param name="PrepNote">"Preparing a brief..." while Prep now runs, or why it did not work.</param>
 public sealed record EventItem(string Time, string Title, string Tag, string Location, bool Clash, bool NeedsReply, bool Quiet, string? Link,
-    string EventId = "", string? CalendarId = null, bool CanRespond = false, string? Response = null);
+    string EventId = "", string? CalendarId = null, bool CanRespond = false, string? Response = null,
+    BriefView? Brief = null, bool IsPrepping = false, string? PrepNote = null);
+
+/// <summary>A meeting brief as the Schedule shows it under its event.</summary>
+/// <param name="Note">Who wrote it and when, and "may be out of date" when the event changed since.</param>
+public sealed record BriefView(IReadOnlyList<string> Who, IReadOnlyList<string> Agenda, IReadOnlyList<string> Context, IReadOnlyList<string> Owes, IReadOnlyList<string> Gaps, string Note, bool Stale);
 
 /// <summary>A thread on the Email tab.</summary>
 /// <param name="Staleness">0 recent, 1 over a month, 2 over three months: the age chip's emphasis.</param>

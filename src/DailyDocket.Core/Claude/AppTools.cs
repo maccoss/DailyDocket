@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DailyDocket.Core.Jobs;
+using DailyDocket.Core.Prep;
 using ModelContextProtocol.Server;
 
 namespace DailyDocket.Core.Claude;
@@ -29,7 +31,20 @@ public interface IRunContext
     IReadOnlyDictionary<string, string> TriageInstructions { get; }
 
     void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why);
+
+    /// <summary>The meetings this run may write briefs for: a prep run's, empty for every other run.</summary>
+    IReadOnlyList<PrepTarget> PrepTargets => [];
+
+    /// <summary>Saves a brief for one of <see cref="PrepTargets"/>; returns what to tell the model.</summary>
+    string SaveBrief(PrepTarget target, MeetingBrief brief) => throw new InvalidOperationException("This run does not write briefs.");
 }
+
+/// <summary>One attendee as write_brief takes it.</summary>
+public sealed record BriefAttendeeArg(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("org")] string? Org = null,
+    [property: JsonPropertyName("role")] string? Role = null,
+    [property: JsonPropertyName("organizer")] bool Organizer = false);
 
 /// <summary>
 /// The tools the app gives Claude, served over MCP by <see cref="AppToolServer"/> (LabOps' pattern),
@@ -52,6 +67,8 @@ public sealed class AppTools
     public const string TriageBatchToolName = $"mcp__{ServerName}__triage_batch";
 
     public const string RecordVerdictsToolName = $"mcp__{ServerName}__record_verdicts";
+
+    public const string WriteBriefToolName = $"mcp__{ServerName}__write_brief";
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
@@ -170,6 +187,63 @@ public sealed class AppTools
         }
 
         return problems.Count == 0 ? $"Saved {saved}." : $"Saved {saved}. Not saved (not in a batch you were given, or missing source, key, for_message or needs_reply): {string.Join(", ", problems)}.";
+    }
+
+    /// <summary>
+    /// Saves a meeting brief. The arguments are typed and every one is checked here: the event must
+    /// be one this run was asked to prepare (text in an email cannot point the run at another
+    /// meeting), and each item is cleaned and capped before it reaches git.
+    /// </summary>
+    [McpServerTool(Name = "write_brief", Title = "Write meeting brief")]
+    [Description("Saves the brief for the meeting you were asked to prepare. Every item is one short sentence in your own words for Mike, never copied text.")]
+    public string WriteBrief(
+        [Description("The event id exactly as given.")] string event_id,
+        [Description("Everyone invited except Mike: name, organization, their role or relationship to Mike, and organizer true for whoever organized it.")] BriefAttendeeArg[] attendees,
+        [Description("What the meeting is for and will cover: 1 to 5 items.")] string[] agenda,
+        [Description("Background: the email threads, documents or events that led to it, summarized: up to 6 items.")] string[] context,
+        [Description("What Mike owes these people or promised them; empty when nothing.")] string[] owes,
+        [Description("What you could not find out, and questions or decisions Mike should settle: up to 3 items; empty when nothing.")] string[] gaps,
+        [Description("Gmail thread ids and https document links you drew on.")] string[]? sources = null)
+    {
+        var run = RequireRun();
+        var target = run.PrepTargets.FirstOrDefault(t => t.Event.EventId == event_id);
+        if (target is null)
+        {
+            return $"Not saved: {event_id} is not the meeting this run was asked to prepare.";
+        }
+
+        var problems = new List<string>();
+        var people = (attendees ?? []).Where(a => !string.IsNullOrWhiteSpace(a?.Name)).ToList();
+        if (people.Count == 0)
+        {
+            problems.Add("attendees must list who is coming, each with a name");
+        }
+
+        if (BriefRules.Items(agenda).Count == 0)
+        {
+            problems.Add("agenda needs at least one item");
+        }
+
+        if (problems.Count > 0)
+        {
+            return $"Not saved: {string.Join("; ", problems)}. Call write_brief again with these fixed.";
+        }
+
+        var brief = new MeetingBrief(
+            target.Event.EventId,
+            target.Event.Title,
+            target.Event.Start,
+            target.Event.Updated,
+            [.. people.Select(a => new BriefAttendee(a.Name, a.Org ?? "", a.Role ?? "", a.Organizer))],
+            agenda,
+            context ?? [],
+            owes ?? [],
+            gaps ?? [],
+            sources ?? [],
+            DateTimeOffset.UtcNow,
+            "",
+            "");
+        return run.SaveBrief(target, brief);
     }
 
     private IRunContext RequireRun() =>

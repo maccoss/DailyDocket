@@ -208,7 +208,7 @@ public static class Program
         services.AddSingleton(provider => new SetupChecks(provider.GetRequiredService<ProcessRunner>(), provider.GetRequiredService<ToolLocator>()));
         services.AddSingleton<UpdateService>();
         services.AddSingleton<UpdateBarViewModel>();
-
+        SharedJobs.Register(services);
         services.AddSingleton<Drafter>();
         services.AddSingleton<TodoViewModel>();
         services.AddSingleton<MainViewModel>();

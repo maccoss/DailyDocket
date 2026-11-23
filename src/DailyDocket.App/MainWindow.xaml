@@ -51,7 +51,7 @@
             <TextBlock Text="{Binding Banner}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" />
         </Border>
 
-        <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0">
+        <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0" SelectedIndex="{Binding SelectedTab}">
             <TabItem Header="SCHEDULE">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ScheduleSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
@@ -154,6 +154,7 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Border.Style>
+                                                        <StackPanel>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="110" />
@@ -193,8 +194,51 @@
                                                                         <Binding Path="Response" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
                                                                     </TextBlock.Visibility>
                                                                 </TextBlock>
+                                                                <Button Content="Prep now" HorizontalAlignment="Right" Margin="0,4,0,0"
+                                                                        ToolTip="Claude writes (or rewrites) a brief for this meeting from the invitation, your email and linked documents"
+                                                                        Command="{Binding DataContext.PrepNowCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button" BasedOn="{StaticResource OpenButton}">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsPrepping}" Value="True">
+                                                                                    <Setter Property="IsEnabled" Value="False" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                </Button>
                                                             </StackPanel>
                                                         </Grid>
+                                                        <TextBlock Text="{Binding PrepNote}" Style="{StaticResource Muted}" FontSize="12.5" TextWrapping="Wrap" Margin="110,6,0,0">
+                                                            <TextBlock.Visibility>
+                                                                <Binding Path="PrepNote" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                            </TextBlock.Visibility>
+                                                        </TextBlock>
+                                                        <!-- The meeting brief, folded until wanted; read from the data repository, so offline too. -->
+                                                        <Expander Header="Brief" Margin="110,6,0,0" DataContext="{Binding Brief}" Foreground="{StaticResource Ink2Brush}">
+                                                            <Expander.Visibility>
+                                                                <Binding Converter="{x:Static vm:Converters.NotNullToVisibility}" />
+                                                            </Expander.Visibility>
+                                                            <StackPanel Margin="4,6,0,4">
+                                                                <TextBlock Text="{Binding Note}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Stale}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <ItemsControl Tag="Who" ItemsSource="{Binding Who}" Style="{StaticResource BriefSection}" />
+                                                                <ItemsControl Tag="Agenda" ItemsSource="{Binding Agenda}" Style="{StaticResource BriefSection}" />
+                                                                <ItemsControl Tag="Context" ItemsSource="{Binding Context}" Style="{StaticResource BriefSection}" />
+                                                                <ItemsControl Tag="You owe" ItemsSource="{Binding Owes}" Style="{StaticResource BriefSection}" />
+                                                                <ItemsControl Tag="Gaps and questions" ItemsSource="{Binding Gaps}" Style="{StaticResource BriefSection}" />
+                                                            </StackPanel>
+                                                        </Expander>
+                                                        </StackPanel>
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>

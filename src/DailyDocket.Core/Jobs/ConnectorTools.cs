@@ -23,6 +23,18 @@ public static class ConnectorTools
     public const string SlackSearch = Slack + "slack_search_public_and_private";
     public const string SlackReadThread = Slack + "slack_read_thread";
     public const string SlackReactions = Slack + "slack_get_reactions";
+    public const string GetEvent = Calendar + "get_event";
+
+    /// <summary>
+    /// The Google Drive connector, for meeting prep. Not in the spike's recording (it was not
+    /// connected then); these names were listed by ToolSearch in a headless run on skiddaw,
+    /// November 2026 (LivePrepTests.Drive_tool_names). A run whose Drive tools do not load simply
+    /// works without them.
+    /// </summary>
+    public const string Drive = "mcp__claude_ai_Google_Drive__";
+
+    /// <summary>The Drive tools meeting prep may use: find a file, read its text, see its metadata.</summary>
+    public static readonly IReadOnlyList<string> DriveReads = [Drive + "search_files", Drive + "read_file_content", Drive + "get_file_metadata"];
 
     /// <summary>Tools that send, change or delete anything. No reading run may use them.</summary>
     public static readonly IReadOnlyList<string> Writes =
@@ -39,6 +51,8 @@ public static class ConnectorTools
         Slack + "slack_create_conversation", Slack + "slack_create_list", Slack + "slack_update_list",
         Slack + "slack_add_list_record", Slack + "slack_update_list_record", Slack + "slack_get_file_upload_url",
         Slack + "slack_complete_file_upload",
+        Drive + "create_file", Drive + "update_file", Drive + "copy_file", Drive + "share_file", Drive + "trash_file",
+        Drive + "request_access",
     ];
 
     /// <summary>Tools that read: a sending run gets none of them, so nothing it sees can steer it.</summary>
@@ -50,6 +64,8 @@ public static class ConnectorTools
         SlackReactions, Slack + "slack_read_user_profile", Slack + "slack_read_canvas", Slack + "slack_read_file",
         Slack + "slack_read_list", Slack + "slack_search_channels", Slack + "slack_search_users", Slack + "slack_list_user_channels",
         Slack + "slack_list_channel_members", Slack + "slack_search_emojis",
+        .. DriveReads, Drive + "list_recent_files", Drive + "download_file_content", Drive + "get_file_permissions",
+        Drive + "list_file_revisions", Drive + "list_shared_drives", Drive + "get_shared_drive_metadata",
     ];
 
     /// <summary>A regex matching every write tool, for the send guard's PreToolUse matcher.</summary>

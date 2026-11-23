@@ -79,6 +79,29 @@ impact first, empty headings deleted at release.
   fixes it, and cleared by itself on returning to the window once fixed.
   (`src/DailyDocket.Core/Setup/SetupChecks.cs`)
 - **An app icon.** A teal square with a white D, on the window, the taskbar and the Start menu.
+- **Meeting briefs.** Every meeting in the next two working days got a one-screen brief from
+  Claude: who is coming and their role, what the meeting is for, the email threads and documents
+  that led to it, what Mike owes those people, and what is still unclear. Briefs were written each
+  night and at a midday catch-up by one computer (`nightly.machine` in `docket.yaml`; a fallback
+  took over when it was off for more than two hours), saved in the data repository, and shown under
+  each event on the Schedule as **Brief**, offline too. A brief was remade when its event changed,
+  and said "may be out of date" until then. **Prep now** on any event wrote one at once. Declined,
+  all-day and home-calendar events, meetings with no one else invited, and department events Mike
+  had not accepted were skipped (`prep` in `docket.yaml`). Prep runs could only read Calendar, Gmail
+  and Drive, and could save only the brief for their own meeting.
+- **Verdicts shared between computers.** Claude's "needs a reply" verdicts were saved in the data
+  repository (`verdicts/email`, `verdicts/slack`), so a conversation judged on one computer was
+  not judged, or paid for, again on the others. A verdict for an older message never replaced one
+  for a newer message.
+- **Old unanswered mail surfaced.** Each night the designated computer also read the inbox older
+  than the 30-day window, back 90 days (`mail.deepDays`), and Claude judged what it found, so old
+  threads still waiting on a reply appeared on the Email tab.
+- **Notification area and notifications.** Minimizing put DailyDocket in the notification area
+  (`"MinimizeToTray"`), where it kept syncing; clicking the icon brought it back. A Windows
+  notification said when something new needed Mike after a sync: an email or Slack conversation
+  newly waiting on a reply, or a reply that was held or not sent. Clicking it opened the window on
+  that tab and conversation. Notifications could be turned off from the icon's menu
+  (`"Notifications"`).
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
   SQLCipher, with its key kept in Windows Credential Manager. `outbox.json` was encrypted for the
   Windows account, and no plain-text copies of mail were kept: each sync's working folder was

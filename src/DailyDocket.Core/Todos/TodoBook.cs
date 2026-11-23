@@ -143,6 +143,12 @@ public sealed class TodoBook : IDisposable
         Schedule($"Unhandled {kind} {key}");
     }
 
+    /// <summary>
+    /// Another file in the data repository changed (a brief, a verdict, the lease): commit and push it
+    /// with the next sync, as a to-do edit would be.
+    /// </summary>
+    public void NoteChange(string summary) => Schedule(summary);
+
     /// <summary>Pushes now (Refresh, startup), with anything still waiting.</summary>
     public async Task<DataSyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
     {

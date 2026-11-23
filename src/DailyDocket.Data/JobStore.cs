@@ -30,13 +30,31 @@ public sealed class JobStore : IJobStore
     {
         var config = _config();
         var handled = _handled();
-        var mail = _store.MailToTriage(config, MailSince(now), max, handled);
+        var mail = _store.MailToTriage(config, MailSince(now), max, handled, Deep(now));
         var slack = mail.Count < max ? _store.SlackToTriage(config, SlackSince(now), max - mail.Count, handled) : [];
         return [.. mail, .. slack];
     }
 
-    public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why) =>
+    /// <summary>
+    /// Called after each verdict is cached, to share it through the data repository. Set once by
+    /// the app; a test's JobStore leaves it null.
+    /// </summary>
+    public Action<string, string, string, bool, string>? VerdictRecorded { get; set; }
+
+    public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why)
+    {
         _store.RecordVerdict(source, key, forMessage, needsReply, why);
+        VerdictRecorded?.Invoke(source, key, forMessage, needsReply, why);
+    }
+
+    /// <summary>
+    /// What the last nightly deep sweep reached: threads it saw since it began (a minute's slack, as
+    /// for the full sweep) whose wait began before the live window. Null before any deep sweep.
+    /// </summary>
+    public DeepWindow? Deep(DateTimeOffset now) =>
+        DateTimeOffset.TryParse(_store.Watermark("mail", "deep"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var start)
+            ? new DeepWindow(start.AddMinutes(-1), now.AddDays(-_config().Mail.WindowDays))
+            : null;
 
     public string? Watermark(string source, string scope) => _store.Watermark(source, scope);
 

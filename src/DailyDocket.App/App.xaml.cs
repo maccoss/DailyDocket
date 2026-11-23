@@ -27,12 +27,8 @@ public partial class App : Application
         MainWindow = window;
         _instance.ListenForSecondLaunch(() => Dispatcher.InvokeAsync(() =>
         {
-            if (window.WindowState == WindowState.Minimized)
-            {
-                window.WindowState = WindowState.Normal;
-            }
-
-            window.Activate();
+            // Shown, restored and activated: it may be hidden in the notification area.
+            window.Reveal();
 
             // Answered from the UI thread, so a copy whose UI is stuck does not seem alive.
             _instance.Acknowledge();

@@ -43,8 +43,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly System.Windows.Threading.DispatcherTimer _countdown = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings,
-        OutboxStore outbox, OutboxWorker worker, Drafter drafter, ILogger<MainViewModel> log)
+        OutboxStore outbox, OutboxWorker worker, Drafter drafter, ILogger<MainViewModel> log, SharedJobs shared)
     {
+        _shared = shared;
         _outbox = outbox;
         _worker = worker;
         _drafter = drafter;
@@ -97,6 +98,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsSyncing = false;
             Reload();
         });
+        AttachShared();
     }
 
     public TodoViewModel Todos { get; }
@@ -220,6 +222,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (_config.IsComplete)
         {
             _ = RunTimerAsync();
+            StartShared();
         }
     }
 
@@ -799,6 +802,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ReloadSchedule(Core.Configuration.DocketConfig config, DateTimeOffset now, TimeZoneInfo zone)
     {
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var briefs = LoadBriefs(today, config.Schedule.Days);
         var pending = _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending, OutboxStatus.Sent)
             .Where(i => i.Kind == OutboxKind.CalendarResponse)
             .GroupBy(i => i.Target)
@@ -825,7 +829,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 s.Event.EventId,
                 null,
                 s.Event.MyResponse is not null && s.Calendar.Id is null,
-                Response(s.Event)))])).ToList();
+                Response(s.Event),
+                BriefFor(briefs, s.Event),
+                _prepping.Contains(s.Event.EventId),
+                _prepNotes.GetValueOrDefault(s.Event.EventId)))])).ToList();
         Swap(Days, days, d => d);
         var meetings = days.Sum(d => d.Events.Count);
         ScheduleSummary = days.Count == 0 ? "Nothing on the calendar for the next week." : $"{meetings} meetings over the next {config.Schedule.Days} days";
@@ -833,7 +840,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void ReloadMail(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
-        var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled);
+        var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled, _jobs.Deep(now));
         var items = rows.Where(r => r.State is "Owed" or "Draft").Select(r =>
         {
             var waited = now - (r.WaitingSince ?? now);

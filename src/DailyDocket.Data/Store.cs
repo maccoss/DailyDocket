@@ -18,6 +18,9 @@ public sealed record MailRow(
 /// <summary>A conversation on the Slack tab.</summary>
 public sealed record SlackRow(string Key, string State, string From, string Where, bool IsDm, string Text, DateTimeOffset When, string? Why, string? Permalink, string LastTs = "");
 
+/// <summary>The nightly deep sweep's reach: threads it saw since <paramref name="SeenSince"/> whose wait began before <paramref name="OlderThan"/>.</summary>
+public readonly record struct DeepWindow(DateTimeOffset SeenSince, DateTimeOffset OlderThan);
+
 /// <summary>How many items the tabs hide, and why, so the rules stay checkable.</summary>
 public sealed record MailCounts(int Owed, int Reading, int Quiet, int Handled = 0);
 
@@ -81,16 +84,20 @@ public sealed class Store
     }
 
     /// <summary>The Email tab: unsent drafts first, then what he owes, oldest wait first.</summary>
-    public (IReadOnlyList<MailRow> Rows, MailCounts Counts) MailRows(DateTimeOffset seenSince, HandledSet? handled = null)
+    /// <param name="deep">
+    /// The nightly deep sweep's window: threads it saw (since its start) whose wait began before the
+    /// live window (older than) are shown too, so old unanswered threads surface. Null: none.
+    /// </param>
+    public (IReadOnlyList<MailRow> Rows, MailCounts Counts) MailRows(DateTimeOffset seenSince, HandledSet? handled = null, DeepWindow? deep = null)
     {
         using var c = _db.Connect();
         var rows = c.Query(
-            """
+            $"""
             SELECT t.*, v.needs_reply, v.why, v.for_message
             FROM email_thread t LEFT JOIN verdict v ON v.source = 'mail' AND v.item_key = t.thread_id
-            WHERE t.seen_utc >= @since AND t.category IS NOT NULL
+            WHERE {SeenClause} AND t.category IS NOT NULL
             """,
-            new { since = DocketDatabase.Iso(seenSince) }).ToList();
+            SeenArgs(seenSince, deep)).ToList();
 
         var result = new List<MailRow>();
         int owed = 0, reading = 0, quiet = 0, handledCount = 0;
@@ -157,24 +164,35 @@ public sealed class Store
     }
 
     /// <summary>Open threads whose newest message Claude has not judged, newest first.</summary>
-    public IReadOnlyList<TriageItem> MailToTriage(DocketConfig config, DateTimeOffset seenSince, int max, HandledSet? handled = null)
+    public IReadOnlyList<TriageItem> MailToTriage(DocketConfig config, DateTimeOffset seenSince, int max, HandledSet? handled = null, DeepWindow? deep = null)
     {
         using var c = _db.Connect();
         var ids = c.Query<(string ThreadId, string ReadId, string? Since)>(
-            """
+            $"""
             SELECT t.thread_id, t.read_message_id, t.waiting_since_utc FROM email_thread t
             LEFT JOIN verdict v ON v.source = 'mail' AND v.item_key = t.thread_id
-            WHERE t.category = 'Open' AND t.seen_utc >= @since AND t.read_message_id IS NOT NULL
+            WHERE t.category = 'Open' AND {SeenClause} AND t.read_message_id IS NOT NULL
               AND (v.for_message IS NULL OR v.for_message <> t.read_message_id)
             ORDER BY t.waiting_since_utc DESC
             """,
-            new { since = DocketDatabase.Iso(seenSince) })
+            SeenArgs(seenSince, deep))
             .Where(i => handled?.CoversEmail(i.ThreadId, DocketDatabase.FromIso(i.Since)) != true) // never pay to judge what he handled
             .Take(max)
             .ToList();
 
         return [.. ids.Select(i => new TriageItem("mail", i.ThreadId, i.ReadId, MailRules.TriageTranscript(LoadMessages(c, null, i.ThreadId), config)))];
     }
+
+    /// <summary>Seen by the live sweeps, or by the deep sweep and older than the live window.</summary>
+    private const string SeenClause =
+        "(t.seen_utc >= @since OR (@deepSince IS NOT NULL AND t.seen_utc >= @deepSince AND t.waiting_since_utc < @deepOlderThan))";
+
+    private static object SeenArgs(DateTimeOffset since, DeepWindow? deep) => new
+    {
+        since = DocketDatabase.Iso(since),
+        deepSince = deep is { } d ? DocketDatabase.Iso(d.SeenSince) : null,
+        deepOlderThan = deep is { } o ? DocketDatabase.Iso(o.OlderThan) : null,
+    };
 
     /// <summary>Mike's own recent emails, for a draft's voice: the new text of each, without quoted history.</summary>
     public IReadOnlyList<string> RecentFromMe(DocketConfig config, int max)
@@ -316,6 +334,42 @@ public sealed class Store
             VALUES (@source, @key, @forMessage, @needsReply, @why, @now)
             """,
             new { source, key, forMessage, needsReply, why = why.Length > 120 ? why[..120] : why, now = DocketDatabase.Iso(DateTimeOffset.UtcNow) });
+    }
+
+    /// <summary>The cache's verdicts for a source, as the data repository shares them, with each message's time where known.</summary>
+    public IReadOnlyList<Core.Verdicts.SharedVerdict> CachedVerdicts(string source)
+    {
+        using var c = _db.Connect();
+        return
+        [
+            .. c.Query<(string Key, string ForMessage, long NeedsReply, string Why, string Judged, string? MessageAt)>(
+                    """
+                    SELECT v.item_key, v.for_message, v.needs_reply, v.why, v.judged_utc, m.date_utc
+                    FROM verdict v LEFT JOIN email_message m ON v.source = 'mail' AND m.message_id = v.for_message
+                    WHERE v.source = @source
+                    """, new { source })
+                .Select(v => new Core.Verdicts.SharedVerdict(source, v.Key, v.ForMessage, DocketDatabase.FromIso(v.MessageAt), v.NeedsReply != 0, v.Why,
+                    DocketDatabase.FromIso(v.Judged) ?? DateTimeOffset.UnixEpoch, "")),
+        ];
+    }
+
+    /// <summary>When a mail message was sent, if the cache has it (a Slack ts carries its own time).</summary>
+    public DateTimeOffset? MailMessageTime(string messageId)
+    {
+        using var c = _db.Connect();
+        return DocketDatabase.FromIso(c.ExecuteScalar<string?>("SELECT date_utc FROM email_message WHERE message_id = @messageId", new { messageId }));
+    }
+
+    /// <summary>Takes in a verdict another machine judged, keeping its judged time.</summary>
+    public void ImportVerdict(Core.Verdicts.SharedVerdict v)
+    {
+        using var c = _db.Connect();
+        c.Execute(
+            """
+            INSERT OR REPLACE INTO verdict (source, item_key, for_message, needs_reply, why, judged_utc)
+            VALUES (@source, @key, @forMessage, @needsReply, @why, @at)
+            """,
+            new { source = v.Source, key = v.Key, forMessage = v.ForMessage, needsReply = v.NeedsReply, why = v.Why, at = DocketDatabase.Iso(v.At) });
     }
 
     private Dictionary<string, (string ForMessage, bool NeedsReply, string Why)> Verdicts(string source)

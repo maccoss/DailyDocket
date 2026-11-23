@@ -62,6 +62,29 @@ public sealed class SyncScheduler : IDisposable
         }
     }
 
+    /// <summary>
+    /// Called before each sync decides whether triage is needed: the app takes in verdicts other
+    /// machines shared, so it does not pay to judge them again.
+    /// </summary>
+    public Action? BeforeTriage { get; set; }
+
+    /// <summary>
+    /// Runs other work over the cache (the nightly deep sweep) when no sync is running, and keeps a
+    /// sync from starting until it is done: two triage runs at once would judge the same items twice.
+    /// </summary>
+    public async Task<T> ExclusiveAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await work(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Syncs now and then every <see cref="AppSettings.PullIntervalMinutes"/> until cancelled.</summary>
     public async Task RunPeriodicallyAsync(CancellationToken cancellationToken)
     {
@@ -102,6 +125,7 @@ public sealed class SyncScheduler : IDisposable
             Run(JobPlans.SlackPull(config, now, zone, _store.Watermark("slack", "full"), settings.PullModel))).ConfigureAwait(false);
 
         var outcomes = pulls.ToList();
+        BeforeTriage?.Invoke();
         if (_store.TriageBatch(now, 1).Count > 0)
         {
             outcomes.Add(await Run(JobPlans.TriageRun(settings.JudgmentModel)).ConfigureAwait(false));
