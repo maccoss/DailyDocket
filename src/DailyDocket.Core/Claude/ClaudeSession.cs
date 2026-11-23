@@ -54,6 +54,12 @@ public sealed record ClaudeSessionOptions
     /// <summary>A ceiling on a run's turns, so a confused run cannot go on calling tools.</summary>
     public int? MaxTurns { get; init; }
 
+    /// <summary>
+    /// Keep no transcript under ~/.claude/projects. A run's transcript holds the mail it read, in
+    /// plain text outside the encrypted database, and nothing ever resumes a run.
+    /// </summary>
+    public bool NoSessionPersistence { get; init; }
+
     public IReadOnlyDictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
 
     /// <summary>The command line, built in one place so a test can check it.</summary>
@@ -126,6 +132,11 @@ public sealed record ClaudeSessionOptions
         if (MaxTurns is { } turns)
         {
             args.AddRange(["--max-turns", turns.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+        }
+
+        if (NoSessionPersistence)
+        {
+            args.Add("--no-session-persistence");
         }
 
         return args;

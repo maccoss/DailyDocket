@@ -99,6 +99,23 @@ public sealed class DocumentConverterTests
     }
 
     [Fact]
+    public void A_draft_cannot_hide_a_link_or_text_mike_would_not_see()
+    {
+        const string conversation = "Pat: the agenda is at https://example.org/agenda, see you Friday.";
+        var draft = "Hi Pat,\n\nSee [the agenda](https://evil.example/?q=private+notes) and [ours](https://example.org/agenda).\n"
+            + "Also https://evil.example/x?d=secret.​\n\n\n\n\n\n\nHidden text far below.";
+
+        var safe = DailyDocket.Core.Drafting.DraftPlans.Defuse(draft, conversation);
+
+        safe.ShouldNotContain("evil.example");
+        safe.ShouldContain("the agenda [link removed: not in the conversation]");
+        safe.ShouldContain("[ours](https://example.org/agenda)");
+        safe.ShouldNotContain("​");
+        safe.ShouldNotContain("\n\n\n");
+        safe.ShouldContain("Hidden text far below.");
+    }
+
+    [Fact]
     public void Drafts_never_keep_an_em_dash()
     {
         DailyDocket.Core.Drafting.DraftPlans.HouseStyle("Yes — Friday works—thanks.").ShouldBe("Yes, Friday works, thanks.");

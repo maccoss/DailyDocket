@@ -177,7 +177,7 @@ public sealed class OutboxWorker
             return;
         }
 
-        var (status, problem) = OutboxRules.AfterUnconfirmedSend(sent.Detail, sent.FinalText);
+        var (status, problem) = OutboxRules.AfterUnconfirmedSend(sent.Detail, sent.FinalText, sent.CallLetThrough);
         Update(item with { Status = status, Problem = problem });
         _log.LogWarning("Outbox item {Id} not confirmed: {Status}", item.Id, status);
     }

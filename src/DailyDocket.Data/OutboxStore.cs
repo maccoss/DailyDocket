@@ -7,7 +7,7 @@ namespace DailyDocket.Data;
 /// <summary>The outbox, in the database and mirrored to outbox.json.</summary>
 /// <remarks>
 /// The database is otherwise a cache that can be rebuilt; the outbox and unsent drafts cannot, so
-/// every change is also exported to a plain JSON file beside it (design, Local data model).
+/// every change is also exported to a JSON file beside it, encrypted for Mike's Windows account (design, Local data model).
 /// </remarks>
 public sealed class OutboxStore : IOutboxStore
 {
@@ -54,7 +54,7 @@ public sealed class OutboxStore : IOutboxStore
         List<OutboxItem>? items;
         try
         {
-            items = JsonSerializer.Deserialize<List<OutboxItem>>(File.ReadAllText(_exportPath), Export);
+            items = JsonSerializer.Deserialize<List<OutboxItem>>(Unprotect(File.ReadAllBytes(_exportPath)), Export);
         }
         catch (JsonException)
         {
@@ -177,8 +177,38 @@ public sealed class OutboxStore : IOutboxStore
         {
             var unsent = WithStatus(OutboxStatus.Draft, OutboxStatus.Queued, OutboxStatus.Sending, OutboxStatus.Held, OutboxStatus.Failed);
             var temp = _exportPath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(unsent, Export));
+            File.WriteAllBytes(temp, Protect(JsonSerializer.SerializeToUtf8Bytes(unsent, Export)));
             File.Move(temp, _exportPath, overwrite: true);
+        }
+    }
+
+    private static readonly byte[] Entropy = "DailyDocket outbox export"u8.ToArray();
+
+    /// <summary>
+    /// The export holds Mike's unsent replies and their recipients, so it is encrypted for his
+    /// Windows account (DPAPI) rather than left beside the encrypted database in plain text. DPAPI
+    /// rather than the database key: the export exists to survive losing the database, and must
+    /// not be lost with it. Anyone signed in as Mike can still read it, as with the database key.
+    /// </summary>
+    internal static byte[] Protect(byte[] json) => OperatingSystem.IsWindows()
+        ? System.Security.Cryptography.ProtectedData.Protect(json, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser)
+        : json;
+
+    /// <summary>The export's JSON. What DPAPI cannot open (a plain file from an earlier version) is returned as it is.</summary>
+    internal static byte[] Unprotect(byte[] data)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return data;
+        }
+
+        try
+        {
+            return System.Security.Cryptography.ProtectedData.Unprotect(data, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return data;
         }
     }
 }

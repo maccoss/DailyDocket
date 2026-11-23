@@ -80,13 +80,23 @@ impact first, empty headings deleted at release.
   (`src/DailyDocket.Core/Setup/SetupChecks.cs`)
 - **An app icon.** A teal square with a white D, on the window, the taskbar and the Start menu.
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
-  SQLCipher, with its key kept in Windows Credential Manager.
+  SQLCipher, with its key kept in Windows Credential Manager. `outbox.json` was encrypted for the
+  Windows account, and no plain-text copies of mail were kept: each sync's working folder was
+  deleted after two hours, and Claude Code kept no transcript of the mail a sync read.
+- **Safer drafts.** A Claude draft could not contain a link or web address that was not already in
+  the conversation (it was replaced by "[link removed: not in the conversation]"), hidden
+  characters, or text pushed far down by blank lines, so an email written to trick Claude could
+  not hide anything in a reply that Mike might miss before pressing Send.
 
 ## Bug Fixes
 
 - A reply that may have gone out but could not be confirmed was shown as **Not sent**, where
   **Send again** could deliver it twice. It is now held with a note to check the conversation
-  first; only a send the guard refused shows as not sent.
+  first; only a send the guard refused shows as not sent. A send that went out but whose retry was
+  then refused is also held, not shown as not sent.
+- If the send guard crashed, timed out or could not start, the send went ahead unchecked. A send
+  now runs only when the guard has explicitly allowed it, and two identical calls made at the same
+  moment cannot both get through.
 - The last second or so of typing in a reply was lost when switching threads or closing the app.
   The reply box now saves before it switches, closes, or the app exits.
 - When the local database could not be opened (for example after its key was lost), it was deleted

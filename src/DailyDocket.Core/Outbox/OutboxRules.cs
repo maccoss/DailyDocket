@@ -155,14 +155,20 @@ public static partial class OutboxRules
 
     /// <summary>
     /// What to make of a send run that left no record of the call's result. Only a refusal by the
-    /// guard proves nothing went out; anything else (Claude said it sent, the run ended oddly, the
-    /// capture hook timed out) may have delivered the message, so the item is held for Mike to check
-    /// rather than marked failed, where Send again would deliver it a second time.
+    /// guard, with the guard never having let a call through, proves nothing went out; anything else
+    /// (Claude said it sent, the run ended oddly, the capture hook timed out) may have delivered the
+    /// message, so the item is held for Mike to check rather than marked failed, where Send again
+    /// would deliver it a second time.
     /// </summary>
-    public static (OutboxStatus Status, string Problem) AfterUnconfirmedSend(string? runProblem, string? finalText)
+    /// <param name="callLetThrough">
+    /// Whether the guard allowed a call in this run. A first call that went out without a capture,
+    /// then a retry the guard refused, ends with the guard's words in the final text, yet the
+    /// message was sent.
+    /// </param>
+    public static (OutboxStatus Status, string Problem) AfterUnconfirmedSend(string? runProblem, string? finalText, bool callLetThrough)
     {
         var text = (finalText ?? "").Trim();
-        if (text.Contains("DailyDocket send guard", StringComparison.Ordinal))
+        if (!callLetThrough && text.Contains("DailyDocket send guard", StringComparison.Ordinal))
         {
             var refused = text.Length > 400 ? text[..400] : text;
             return (OutboxStatus.Failed, $"Not sent: the send was refused before it reached Gmail or Slack. {refused}");

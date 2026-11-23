@@ -60,6 +60,6 @@ public sealed class Drafter
             throw new InvalidOperationException(outcome.Detail ?? "Claude did not return a draft. Try again.");
         }
 
-        return (DraftPlans.HouseStyle(outcome.FinalText), guide?.Title);
+        return (DraftPlans.Defuse(DraftPlans.HouseStyle(outcome.FinalText), conversation + "\n" + guide?.Text), guide?.Title);
     }
 }

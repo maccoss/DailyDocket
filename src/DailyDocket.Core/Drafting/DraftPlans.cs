@@ -74,4 +74,37 @@ public static partial class DraftPlans
 
     [GeneratedRegex("\\s*\u2014\\s*")]
     private static partial Regex EmDash();
+
+    /// <summary>
+    /// Takes out of a draft what Mike could miss before pressing Send. The conversation is written
+    /// by other people, and the prompt also carries some of his own messages to others (for his
+    /// voice), so a hostile email could ask for those to be smuggled out: in a link that shows only
+    /// its text, a URL whose query carries them, or text pushed far below the fold. So: a link or
+    /// URL that does not appear in <paramref name="sources"/> (the conversation and guide) is
+    /// replaced by a visible note, long runs of blank lines are collapsed, and invisible formatting
+    /// characters (zero-width and direction marks) are removed.
+    /// </summary>
+    public static string Defuse(string draft, string sources)
+    {
+        bool Known(string url) => sources.Contains(url.TrimEnd('.', ',', ')', ';'), StringComparison.OrdinalIgnoreCase);
+
+        var text = MarkdownLink().Replace(draft, m =>
+            Known(m.Groups["url"].Value) ? m.Value : $"{m.Groups["text"].Value} [link removed: not in the conversation]");
+        text = BareUrl().Replace(text, m => Known(m.Value) ? m.Value : "[link removed: not in the conversation]");
+        text = Invisible().Replace(text, "");
+        return BlankRun().Replace(text, "\n\n").Trim();
+    }
+
+    [GeneratedRegex(@"\[(?<text>[^\]]*)\]\((?<url>[^)\s]+)\)")]
+    private static partial Regex MarkdownLink();
+
+    // Skips URLs already inside a kept Markdown link: those are preceded by "](".
+    [GeneratedRegex(@"(?<!\]\()\b(?:https?|ftp|mailto):[^\s<>()\[\]]+", RegexOptions.IgnoreCase)]
+    private static partial Regex BareUrl();
+
+    [GeneratedRegex("[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\u00AD]")]
+    private static partial Regex Invisible();
+
+    [GeneratedRegex(@"(?:[ \t]*\r?\n){3,}")]
+    private static partial Regex BlankRun();
 }

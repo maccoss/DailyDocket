@@ -140,7 +140,7 @@ public sealed class OutboxTests : IDisposable
         File.WriteAllText(claims, OutboxRules.ClaimsJson(item, call));
 
         string Attempt(JsonObject input) =>
-            SendGuard.Decide(new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = call.ToolName, ["tool_input"] = input }.ToJsonString(), claims) ?? "allowed";
+            SendGuard.Decide(new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = call.ToolName, ["tool_input"] = input }.ToJsonString(), claims) is var d && d.Contains("\"allow\"") ? "allowed" : d;
 
         Attempt(new JsonObject { ["eventId"] = "ev-2", ["responseStatus"] = "accepted" }).ShouldContain("DailyDocket send guard");
         Attempt(new JsonObject { ["eventId"] = "ev-2", ["responseStatus"] = "declined" }).ShouldBe("allowed");
@@ -155,7 +155,7 @@ public sealed class OutboxTests : IDisposable
         File.WriteAllText(claims, OutboxRules.ClaimsJson(item, call));
 
         string Attempt(string tool, JsonObject input) =>
-            SendGuard.Decide(new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = tool, ["tool_input"] = input }.ToJsonString(), claims) ?? "allowed";
+            SendGuard.Decide(new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = tool, ["tool_input"] = input }.ToJsonString(), claims) is var d && d.Contains("\"allow\"") ? "allowed" : d;
 
         var reworded = (JsonObject)call.Input.DeepClone();
         reworded["body"] = "Thanks, Friday works!";
@@ -181,11 +181,14 @@ public sealed class OutboxTests : IDisposable
     [Fact]
     public void Only_a_guard_refusal_marks_an_unconfirmed_send_failed()
     {
-        OutboxRules.AfterUnconfirmedSend(null, "DailyDocket send guard: no outbox item matches this call.").Status.ShouldBe(OutboxStatus.Failed);
+        OutboxRules.AfterUnconfirmedSend(null, "DailyDocket send guard: no outbox item matches this call.", callLetThrough: false).Status.ShouldBe(OutboxStatus.Failed);
+
+        // The first call went out uncaptured and a retry was refused: the guard's words, but sent.
+        OutboxRules.AfterUnconfirmedSend(null, "DailyDocket send guard: outbox item o1 has already been sent in this run.", callLetThrough: true).Status.ShouldBe(OutboxStatus.Held);
 
         // Claude says it sent, but no capture was left: it may well have gone, so it is held, never retried blindly.
-        OutboxRules.AfterUnconfirmedSend(null, "SENT").Status.ShouldBe(OutboxStatus.Held);
-        OutboxRules.AfterUnconfirmedSend("The send sync took longer than 15 minutes and was stopped.", null).Status.ShouldBe(OutboxStatus.Held);
+        OutboxRules.AfterUnconfirmedSend(null, "SENT", callLetThrough: true).Status.ShouldBe(OutboxStatus.Held);
+        OutboxRules.AfterUnconfirmedSend("The send sync took longer than 15 minutes and was stopped.", null, callLetThrough: false).Status.ShouldBe(OutboxStatus.Held);
     }
 
     [Fact]
@@ -227,12 +230,14 @@ public sealed class OutboxTests : IDisposable
         back.SendAfter.ShouldBe(Now.AddSeconds(60));
         store.WithStatus(OutboxStatus.Queued).ShouldHaveSingleItem();
         store.ForTarget("thread-a").Select(i => i.Id).ShouldBe(["o1"]);
-        var json = File.ReadAllText(export);
+        // Encrypted for the Windows account: the unsent reply is not readable on disk.
+        File.ReadAllText(export).ShouldNotContain("\"o1\"");
+        var json = System.Text.Encoding.UTF8.GetString(DailyDocket.Data.OutboxStore.Unprotect(File.ReadAllBytes(export)));
         json.ShouldContain("\"o1\"");
         json.ShouldNotContain("\"o2\"");
 
         store.Delete("o1");
-        File.ReadAllText(export).ShouldNotContain("\"o1\"");
+        System.Text.Encoding.UTF8.GetString(DailyDocket.Data.OutboxStore.Unprotect(File.ReadAllBytes(export))).ShouldNotContain("\"o1\"");
     }
 
     [Fact]

@@ -150,7 +150,7 @@ public sealed class TodoTests : IDisposable
         File.WriteAllText(Path.Combine(export, "todos", "tC.json"), """{"title":"Done one","notes":"","due":"","done":true,"doneAt":1791000000000,"tags":[],"createdAt":1789000000000,"source":{"kind":"slack","id":"D1~main","link":"https://example.slack.com/x"}}""");
         File.WriteAllText(Path.Combine(export, "todos", "tD.json"), """{"title":"  ","notes":"","due":"","done":false,"tags":[]}""");
         File.WriteAllText(Path.Combine(export, "handled", "19a6fed1d02c18c9.json"), """{"at":1789794229459,"lastMsg":1789740479000}""");
-        File.WriteAllText(Path.Combine(export, "slackHandled", "D04F39JQMFH@1792906568.844569.json"), """{"at":1793164858592,"lastTs":1793046270.298769}""");
+        File.WriteAllText(Path.Combine(export, "slackHandled", "D0000000009@1792906568.844569.json"), """{"at":1793164858592,"lastTs":1793046270.298769}""");
         File.WriteAllText(Path.Combine(export, "slackHandled", "C0AK7Q3ABRA.json"), """{"at":1793164858592,"lastTs":1793046270.5}""");
         var repo = new DataRepository(Path.Combine(_dir, "repo"));
 
@@ -164,7 +164,7 @@ public sealed class TodoTests : IDisposable
         todos.Single(t => t.Id == "tC").Source.ShouldBe(new TodoSource("slack", "D1~main"));
         todos.Single(t => t.Id == "tC").DoneAt.ShouldBe(DateTimeOffset.FromUnixTimeMilliseconds(1791000000000));
         repo.LoadHandled("email")["19a6fed1d02c18c9"].UpTo.ShouldBe(DateTimeOffset.FromUnixTimeMilliseconds(1789740479000).ToString("O"));
-        repo.LoadHandled("slack")["D04F39JQMFH~1792906568.844569"].UpTo.ShouldBe("1793046270.298769");
+        repo.LoadHandled("slack")["D0000000009~1792906568.844569"].UpTo.ShouldBe("1793046270.298769");
         repo.LoadHandled("slack").ShouldContainKey("C0AK7Q3ABRA~main");
     }
 

@@ -57,14 +57,14 @@ internal static partial class Capture
     internal static string Receipt(string toolName, JsonNode? response, int length)
     {
         var ids = new List<string>();
-        var paging = new Dictionary<string, string>(StringComparer.Ordinal);
+        var paging = new Dictionary<string, (string Value, int Depth)>(StringComparer.Ordinal);
         Walk(response, ids, paging, depth: 0);
 
         var sb = new StringBuilder();
         sb.Append($"DailyDocket saved this {toolName} result ({length:N0} characters) for the app; its text is not shown to you.");
         if (paging.Count > 0)
         {
-            sb.Append(" Paging: ").Append(string.Join(", ", paging.Select(p => $"{p.Key}={p.Value}"))).Append('.');
+            sb.Append(" Paging: ").Append(string.Join(", ", paging.Select(p => $"{p.Key}={p.Value.Value}"))).Append('.');
         }
 
         if (ids.Count > 0)
@@ -91,7 +91,22 @@ internal static partial class Capture
         };
     }
 
-    private static void Walk(JsonNode? node, List<string> ids, Dictionary<string, string> paging, int depth)
+    /// <summary>
+    /// The receipt is the one place a reading run sees text that came from outside, so only values
+    /// shaped like tokens get into it: a subject or snippet that happens to be JSON (which the walk
+    /// below parses, since MCP text blocks carry JSON as strings) cannot put sentences in front of
+    /// the model. Where the same paging key appears twice, the shallower one wins, so a key planted
+    /// inside a message cannot replace the connector's own page token.
+    /// </summary>
+    private static void SetPaging(Dictionary<string, (string Value, int Depth)> paging, string key, string value, int depth)
+    {
+        if (Token().IsMatch(value) && (!paging.TryGetValue(key, out var existing) || depth < existing.Depth))
+        {
+            paging[key] = (value, depth);
+        }
+    }
+
+    private static void Walk(JsonNode? node, List<string> ids, Dictionary<string, (string Value, int Depth)> paging, int depth)
     {
         if (node is null || depth > 12)
         {
@@ -108,17 +123,17 @@ internal static partial class Capture
                         // Slack's cursor is prose, not a field: "use cursor `<token>`".
                         if (key == "pagination_info" && SlackCursor().Match(s) is { Success: true } cursor)
                         {
-                            paging["cursor"] = cursor.Groups[1].Value;
+                            SetPaging(paging, "cursor", cursor.Groups[1].Value, depth);
                             continue;
                         }
 
                         if (PagingKeys.Contains(key))
                         {
-                            paging[key] = s;
+                            SetPaging(paging, key, s, depth);
                             continue;
                         }
 
-                        if (IdKeys.Contains(key) && ids.Count < MaxIds && !ids.Contains(s) && s.Length <= 64)
+                        if (IdKeys.Contains(key) && ids.Count < MaxIds && !ids.Contains(s) && s.Length <= 64 && Token().IsMatch(s))
                         {
                             ids.Add(s);
                             continue;
@@ -126,7 +141,7 @@ internal static partial class Capture
                     }
                     else if (value is JsonValue n && PagingKeys.Contains(key))
                     {
-                        paging[key] = n.ToJsonString();
+                        SetPaging(paging, key, n.ToJsonString(), depth);
                         continue;
                     }
 
@@ -190,6 +205,10 @@ internal static partial class Capture
             }
         }
     }
+
+    /// <summary>A page token or id: base64url and the punctuation ids use, no spaces, not too long.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9_\-.:=+/@]{1,200}$")]
+    private static partial System.Text.RegularExpressions.Regex Token();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"cursor[^`]*`([^`]+)`")]
     private static partial System.Text.RegularExpressions.Regex SlackCursor();

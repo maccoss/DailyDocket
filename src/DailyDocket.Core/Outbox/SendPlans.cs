@@ -57,7 +57,11 @@ public static class SendPlans
             .Concat(ConnectorTools.Reads)
             .Concat(ConnectorTools.ReaderDisallowedBuiltIns)
             .ToList();
-        return new JobPlan(SendJob, model, prompt, ["ToolSearch", call.ToolName], disallowed, true, 6, new Dictionary<string, string>())
+        // The send tool itself is not on the allowlist: only the guard's explicit allow lets it run.
+        // A guard that crashes, times out or cannot start is non-blocking to Claude Code, so with
+        // the tool allowlisted the call would go through unchecked; without it, dontAsk refuses.
+        // (Checked live: a PreToolUse allow does run a tool that is off the allowlist under dontAsk.)
+        return new JobPlan(SendJob, model, prompt, ["ToolSearch"], disallowed, true, 6, new Dictionary<string, string>())
         {
             Claims = OutboxRules.ClaimsJson(item, call),
             Receipt = false,

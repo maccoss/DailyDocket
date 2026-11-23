@@ -18,6 +18,9 @@ public sealed record JobOutcome(string Job, bool Ok, string? Detail, int Capture
 
     /// <summary>The run's capture folder, for reading a send's result.</summary>
     public string? CaptureFolder { get; init; }
+
+    /// <summary>For a send: whether the guard let a claimed call through (so it may have gone out).</summary>
+    public bool CallLetThrough { get; init; }
 }
 
 /// <summary>Runs one <see cref="JobPlan"/> as a headless Claude Code session.</summary>
@@ -58,6 +61,7 @@ public sealed class JobRunner
         var runId = $"{now:yyyyMMdd-HHmmss}-{plan.Job}-{Guid.NewGuid().ToString("N")[..6]}";
         var runDir = Path.Combine(_paths.RunDirectory, runId);
         var captures = Path.Combine(runDir, "captures");
+        PruneOldRuns(now);
         Directory.CreateDirectory(runDir);
         _store.StartRun(runId, plan.Job, now);
         _log.LogInformation("Run {RunId} started", runId);
@@ -92,6 +96,7 @@ public sealed class JobRunner
                 SettingsPath = plan.Capture || plan.Claims is not null ? WriteSettings(runDir, captures, plan) : null,
                 SettingSources = "local",
                 MaxTurns = plan.MaxTurns,
+                NoSessionPersistence = true,
                 Environment = Environment(),
             };
 
@@ -181,7 +186,63 @@ public sealed class JobRunner
 
         _store.FinishRun(runId, sessionId, failure is null ? "ok" : "failed", failure, cost is null ? null : (double)cost);
         _log.LogInformation("Run {RunId} finished: {Outcome}, {Captured} captures", runId, failure is null ? "ok" : "failed", captured);
-        return new JobOutcome(plan.Job, failure is null, failure, captured, cost) { FinalText = finalText, CaptureFolder = captures };
+        return new JobOutcome(plan.Job, failure is null, failure, captured, cost) { FinalText = finalText, CaptureFolder = captures, CallLetThrough = Directory.EnumerateFiles(runDir, "claims.json.used.*").Any() };
+    }
+
+    /// <summary>How long a run folder is kept: long enough for its caller to read the captures.</summary>
+    public static readonly TimeSpan RunFolderLifetime = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// Deletes run folders older than <see cref="RunFolderLifetime"/>. Each holds connector results
+    /// in plain text (whole mail bodies), the send claims and the docket server's token; everything
+    /// worth keeping is already in the encrypted database, so leaving them would undo the encryption
+    /// for anyone who copies the disk. Not deleted at the end of the run, because the outbox reads a
+    /// send's capture after the run returns; two hours is far past the longest run (15 minutes).
+    /// </summary>
+    internal void PruneOldRuns(DateTimeOffset now)
+    {
+        if (!Directory.Exists(_paths.RunDirectory))
+        {
+            return;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories(_paths.RunDirectory))
+        {
+            try
+            {
+                if (now - Directory.GetCreationTimeUtc(dir) > RunFolderLifetime)
+                {
+                    Directory.Delete(dir, recursive: true);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A file still open (a hook finishing) is tried again before the next run.
+                _log.LogDebug(e, "Could not delete old run folder {Folder}", Path.GetFileName(dir));
+            }
+        }
+
+        // Runs from before --no-session-persistence left transcripts in ~/.claude/projects, in a
+        // folder named after the run's path with every other character turned into '-'. Only
+        // folders under this app's own runs directory match the prefix.
+        var projects = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), ".claude", "projects");
+        var prefix = System.Text.RegularExpressions.Regex.Replace(_paths.RunDirectory, "[^A-Za-z0-9]", "-") + "-";
+        if (!Directory.Exists(projects))
+        {
+            return;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories(projects, prefix + "*"))
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                _log.LogDebug(e, "Could not delete an old run transcript folder");
+            }
+        }
     }
 
     /// <summary>Readers' plans keep the old two-argument form.</summary>

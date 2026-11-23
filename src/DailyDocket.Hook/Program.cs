@@ -53,11 +53,7 @@ internal static class Program
 
                 case "guard":
                     var claims = Option("--claims") ?? throw new ArgumentException("guard needs --claims.");
-                    var decision = SendGuard.Decide(input, claims);
-                    if (decision is not null)
-                    {
-                        Console.Out.Write(decision);
-                    }
+                    Console.Out.Write(SendGuard.Decide(input, claims));
 
                     return 0;
 

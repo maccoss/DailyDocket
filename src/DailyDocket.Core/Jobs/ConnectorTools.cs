@@ -55,10 +55,21 @@ public static class ConnectorTools
     /// <summary>A regex matching every write tool, for the send guard's PreToolUse matcher.</summary>
     public static string WriteMatcher => string.Join('|', Writes.Select(System.Text.RegularExpressions.Regex.Escape));
 
-    /// <summary>Built-in tools no reading run needs: the web (untrusted mail must not steer Claude to a site), the shell, files.</summary>
+    /// <summary>
+    /// Every built-in tool but ToolSearch: the web (untrusted mail must not steer Claude to a site),
+    /// the shell, files (Read would show a run its own raw captures), agents, schedules, skills.
+    /// </summary>
+    /// <remarks>
+    /// Listed one by one rather than passing <c>--tools ToolSearch</c>, which was tried: it also
+    /// removes every MCP tool, the connectors included. The list is the set a run reported at start
+    /// in November 2026; dontAsk refuses anything off the allowlist anyway, so this is a second wall.
+    /// </remarks>
     public static readonly IReadOnlyList<string> ReaderDisallowedBuiltIns =
     [
-        "WebFetch", "WebSearch", "Bash", "PowerShell", "Write", "Edit", "NotebookEdit", "Task", "Agent",
+        "WebFetch", "WebSearch", "Bash", "PowerShell", "Write", "Edit", "NotebookEdit", "Read", "Glob", "Grep",
+        "Task", "Agent", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite",
+        "Skill", "SendMessage", "Workflow", "Monitor", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup",
+        "RemoteTrigger", "PushNotification", "EnterWorktree", "ExitWorktree", "ListMcpResourcesTool", "ReadMcpResourceTool",
     ];
 
     public static IReadOnlyList<string> ReaderDisallowed => [.. Writes, .. ReaderDisallowedBuiltIns];
