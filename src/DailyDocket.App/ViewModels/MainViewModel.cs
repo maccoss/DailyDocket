@@ -8,6 +8,7 @@ using DailyDocket.App.Services;
 using DailyDocket.Core.Calendar;
 using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Jobs;
+using DailyDocket.Core.Outbox;
 using DailyDocket.Core.Todos;
 using DailyDocket.Data;
 using Microsoft.Extensions.Logging;
@@ -35,8 +36,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private (string Kind, string Key, string UpTo, string Subject)? _capture;
     private (string Kind, string Key)? _lastHandled;
 
-    public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings, ILogger<MainViewModel> log)
+    private readonly OutboxStore _outbox;
+    private readonly OutboxWorker _worker;
+    private readonly System.Windows.Threading.DispatcherTimer _countdown = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings,
+        OutboxStore outbox, OutboxWorker worker, ILogger<MainViewModel> log)
     {
+        _outbox = outbox;
+        _worker = worker;
+        MailCompose = new ComposeViewModel(outbox, settings, OutboxKind.EmailReply);
+        SlackCompose = new ComposeViewModel(outbox, settings, OutboxKind.SlackReply);
         _store = store;
         _jobs = jobs;
         _scheduler = scheduler;
@@ -45,6 +55,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _settings = settings;
         _log = log;
         Todos = todos;
+
+        MailCompose.Queued += _ => ReloadOutbox();
+        SlackCompose.Queued += _ => ReloadOutbox();
+        _worker.Changed += _ => OnUi(() =>
+        {
+            ReloadOutbox();
+            Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
+        });
+        _countdown.Tick += (_, _) => ReloadOutbox();
 
         // A Handled mark, here or from another machine, changes what the tabs show.
         _book.Changed += () => OnUi(Reload);
@@ -71,6 +90,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public TodoViewModel Todos { get; }
+
+    public ComposeViewModel MailCompose { get; }
+
+    public ComposeViewModel SlackCompose { get; }
+
+    /// <summary>Replies on their way out for the selected thread: queued (with Undo), held or failed.</summary>
+    public ObservableCollection<OutboxView> MailOutbox { get; } = [];
+
+    public ObservableCollection<OutboxView> SlackOutbox { get; } = [];
 
     public ObservableCollection<DayItem> Days { get; } = [];
 
@@ -150,6 +178,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         Todos.Refresh();
         Reload();
+        _ = _worker.RunAsync(_stop.Token);
         _ = StartAsync();
     }
 
@@ -297,9 +326,171 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnSelectedMailChanged(MailItem? value) => LoadMailReader(value);
+    partial void OnSelectedMailChanged(MailItem? value)
+    {
+        LoadMailReader(value);
+        OpenDraftOrClose(MailCompose, value?.Key, () => ReplyMail());
+        ReloadOutbox();
+    }
 
-    partial void OnSelectedSlackChanged(SlackItem? value) => LoadSlackReader(value);
+    partial void OnSelectedSlackChanged(SlackItem? value)
+    {
+        LoadSlackReader(value);
+        OpenDraftOrClose(SlackCompose, value?.Key, () => ReplySlack());
+        ReloadOutbox();
+    }
+
+    /// <summary>A conversation with an unsent draft opens with it; any other closes the box.</summary>
+    private void OpenDraftOrClose(ComposeViewModel compose, string? target, Action open)
+    {
+        if (target is not null && compose.IsFor(target))
+        {
+            return;
+        }
+
+        if (target is not null && _outbox.ForTarget(target).Any(i => i.Status == OutboxStatus.Draft && i.Kind == compose.Kind))
+        {
+            open();
+        }
+        else if (compose.IsOpen)
+        {
+            compose.CloseCommand.Execute(null);
+        }
+    }
+
+    [RelayCommand]
+    private void ReplyMail() => OpenMailReply(replyAll: false);
+
+    [RelayCommand]
+    private void ReplyAllMail() => OpenMailReply(replyAll: true);
+
+    private void OpenMailReply(bool replyAll)
+    {
+        if (SelectedMail is not { } m)
+        {
+            return;
+        }
+
+        var thread = _store.ThreadMessages(m.Key);
+        if (thread.Count == 0)
+        {
+            return;
+        }
+
+        var newest = thread.OrderBy(x => x.Date ?? DateTimeOffset.MinValue).Last();
+        var (to, cc) = OutboxRules.Recipients(thread, replyAll, _config.Get());
+        MailCompose.Open(m.Key, newest.Id, null, m.Subject, newest.Id, to, cc, replyAll ? "Reply all" : $"Reply to {m.From}");
+    }
+
+    [RelayCommand]
+    private void ReplySlack()
+    {
+        if (SelectedSlack is not { } s || _store.Conversation(s.Key) is not { } conv)
+        {
+            return;
+        }
+
+        SlackCompose.Open(s.Key, conv.ThreadTs, conv.ChannelId, s.Where, conv.Last.Ts, [], [], conv.ThreadTs is null ? $"Reply in {s.Where}" : "Reply in thread");
+    }
+
+    /// <summary>Undo inside the window: back to a draft, open for editing. Nothing was sent.</summary>
+    [RelayCommand]
+    private void UndoSend(OutboxView? view)
+    {
+        if (view is null || _outbox.Get(view.Item.Id) is not { Status: OutboxStatus.Queued } item)
+        {
+            return;
+        }
+
+        (item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose).Edit(item);
+        ReloadOutbox();
+    }
+
+    [RelayCommand]
+    private void EditOutbox(OutboxView? view)
+    {
+        if (view is not null && _outbox.Get(view.Item.Id) is { Status: OutboxStatus.Held or OutboxStatus.Failed } item)
+        {
+            (item.Kind == OutboxKind.EmailReply ? MailCompose : SlackCompose).Edit(item);
+            ReloadOutbox();
+        }
+    }
+
+    /// <summary>
+    /// Sends a held or failed item again. For a held one Mike has now seen what arrived, so its base
+    /// moves to the conversation's newest message (and an email answers that message).
+    /// </summary>
+    [RelayCommand]
+    private void SendAgain(OutboxView? view)
+    {
+        if (view is null || _outbox.Get(view.Item.Id) is not { Status: OutboxStatus.Held or OutboxStatus.Failed } item)
+        {
+            return;
+        }
+
+        if (item.Kind == OutboxKind.EmailReply && _store.ThreadMessages(item.Target).OrderBy(x => x.Date ?? DateTimeOffset.MinValue).LastOrDefault() is { } newest)
+        {
+            item = item with { Base = newest.Id, ReplyTo = newest.Id };
+        }
+        else if (item.Kind == OutboxKind.SlackReply && _store.Conversation(item.Target) is { } conv)
+        {
+            item = item with { Base = conv.Last.Ts };
+        }
+
+        _outbox.Save(item with { Status = OutboxStatus.Queued, SendAfter = DateTimeOffset.UtcNow, Problem = null, Updated = DateTimeOffset.UtcNow });
+        ReloadOutbox();
+    }
+
+    [RelayCommand]
+    private void DiscardOutbox(OutboxView? view)
+    {
+        if (view is not null && _outbox.Get(view.Item.Id) is { Status: not OutboxStatus.Sending })
+        {
+            _outbox.Delete(view.Item.Id);
+            ReloadOutbox();
+        }
+    }
+
+    private void ReloadOutbox()
+    {
+        Fill(MailOutbox, SelectedMail?.Key);
+        Fill(SlackOutbox, SelectedSlack?.Key);
+        var anyQueued = _outbox.WithStatus(OutboxStatus.Queued).Count > 0;
+        if (anyQueued && !_countdown.IsEnabled)
+        {
+            _countdown.Start();
+        }
+        else if (!anyQueued && _countdown.IsEnabled)
+        {
+            _countdown.Stop();
+        }
+
+        void Fill(ObservableCollection<OutboxView> list, string? target)
+        {
+            list.Clear();
+            if (target is null)
+            {
+                return;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            foreach (var i in _outbox.ForTarget(target).Where(i => i.Status != OutboxStatus.Draft))
+            {
+                var status = i.Status switch
+                {
+                    OutboxStatus.Queued when i.SendAfter > now => $"Sending in {Math.Ceiling((i.SendAfter.Value - now).TotalSeconds):0} s",
+                    OutboxStatus.Queued => "Waiting to send" + (NetworkAvailable() ? "" : " (offline; sends when you are back online)"),
+                    OutboxStatus.Sending => "Sending...",
+                    OutboxStatus.Held => "Held",
+                    OutboxStatus.Failed => "Not sent",
+                    _ => i.Status.ToString(),
+                };
+                list.Add(new OutboxView(i, status, i.Problem, i.Status == OutboxStatus.Queued, i.Status is OutboxStatus.Held or OutboxStatus.Failed));
+            }
+        }
+    }
+
+    private static bool NetworkAvailable() => System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
 
     private void LoadMailReader(MailItem? item)
     {
@@ -505,7 +696,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             connection = "Syncing";
         }
 
-        return $"{connection} · calendar {When(JobPlans.Calendar)} · mail {When(JobPlans.Mail)} · Slack {When(JobPlans.Slack)} · outbox empty · local model not set up";
+        return $"{connection} · calendar {When(JobPlans.Calendar)} · mail {When(JobPlans.Mail)} · Slack {When(JobPlans.Slack)} · {OutboxSummary()} · local model not set up";
+    }
+
+    private string OutboxSummary()
+    {
+        var waiting = _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending).Count;
+        var attention = _outbox.WithStatus(OutboxStatus.Held, OutboxStatus.Failed).Count;
+        return (waiting, attention) switch
+        {
+            (0, 0) => "outbox empty",
+            (_, 0) => $"outbox {waiting} sending",
+            (0, _) => $"outbox {attention} need you",
+            _ => $"outbox {waiting} sending, {attention} need you",
+        };
     }
 
     private string? SetupProblem()

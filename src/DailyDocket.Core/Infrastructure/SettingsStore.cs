@@ -14,6 +14,9 @@ public sealed class AppSettings
     /// <summary>The private data repository (to-dos, Handled marks, docket.yaml) to clone; empty means none yet.</summary>
     public string DataRepositoryUrl { get; set; } = "https://github.com/maccoss/DailyDocket-Data.git";
 
+    /// <summary>Whether email replies end with the Gmail signature set up on the web, as replies written in Gmail do.</summary>
+    public bool IncludeSignature { get; set; } = true;
+
     /// <summary>
     /// Claude Code session per key, so "continue" picks up a drafting conversation (keyed by
     /// <c>email:</c> plus the thread id, or <c>slack:</c> plus the conversation key).

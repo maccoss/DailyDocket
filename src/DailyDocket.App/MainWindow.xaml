@@ -212,6 +212,8 @@
                             <StackPanel.Visibility>
                                 <Binding Path="MailReaderTitle" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
                             </StackPanel.Visibility>
+                            <Button Content="Reply" Command="{Binding ReplyMailCommand}" Margin="0,0,6,0" />
+                            <Button Content="Reply all" Command="{Binding ReplyAllMailCommand}" Margin="0,0,18,0" />
                             <Button Content="To do" Command="{Binding CaptureMailCommand}" ToolTip="Make this a task and mark it handled" Margin="0,0,6,0" />
                             <Button Content="Handled" Command="{Binding HandleMailCommand}" ToolTip="Hide this until someone writes again" />
                         </StackPanel>
@@ -229,7 +231,52 @@
                                     <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
                                 </DockPanel>
                             </StackPanel>
-                        </Border>                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
+                        </Border>
+                        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding MailOutbox}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:OutboxView}">
+                                    <Border CornerRadius="8" BorderThickness="1" Padding="10,8" Margin="0,0,0,8">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CanRetry}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource WarnSoftBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Status}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <Button DockPanel.Dock="Right" Content="Discard" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.SendAgainCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Undo" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanUndo, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.UndoSendCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Problem}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                                <TextBlock.Visibility>
+                                                    <Binding Path="Problem" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                </TextBlock.Visibility>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Preview}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <views:ComposeBox DockPanel.Dock="Top" DataContext="{Binding MailCompose}" Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
                                    Text="Select a thread to read it here. It is stored on this computer, so it reads offline.">
                             <TextBlock.Visibility>
                                 <Binding Path="MailReaderTitle" Converter="{x:Static vm:Converters.EmptyToVisibility}" />
@@ -300,6 +347,7 @@
                             <StackPanel.Visibility>
                                 <Binding Path="SlackReaderTitle" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
                             </StackPanel.Visibility>
+                            <Button Content="Reply" Command="{Binding ReplySlackCommand}" Margin="0,0,18,0" />
                             <Button Content="To do" Command="{Binding CaptureSlackCommand}" ToolTip="Make this a task and mark it handled" Margin="0,0,6,0" />
                             <Button Content="Handled" Command="{Binding HandleSlackCommand}" ToolTip="Hide this until someone writes again" />
                         </StackPanel>
@@ -317,7 +365,52 @@
                                     <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
                                 </DockPanel>
                             </StackPanel>
-                        </Border>                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
+                        </Border>
+                        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding SlackOutbox}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:OutboxView}">
+                                    <Border CornerRadius="8" BorderThickness="1" Padding="10,8" Margin="0,0,0,8">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CanRetry}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource WarnSoftBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Status}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <Button DockPanel.Dock="Right" Content="Discard" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.SendAgainCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Undo" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanUndo, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.UndoSendCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Problem}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                                <TextBlock.Visibility>
+                                                    <Binding Path="Problem" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                </TextBlock.Visibility>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Preview}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <views:ComposeBox DockPanel.Dock="Top" DataContext="{Binding SlackCompose}" Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
                                    Text="Select a conversation to read it here. It is stored on this computer, so it reads offline.">
                             <TextBlock.Visibility>
                                 <Binding Path="SlackReaderTitle" Converter="{x:Static vm:Converters.EmptyToVisibility}" />

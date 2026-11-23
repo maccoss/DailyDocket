@@ -11,7 +11,12 @@ namespace DailyDocket.Data;
 /// </remarks>
 public sealed class OutboxStore : IOutboxStore
 {
-    private static readonly JsonSerializerOptions Export = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Export = new()
+    {
+        WriteIndented = true,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
     private readonly DocketDatabase _db;
     private readonly string? _exportPath;
     private readonly object _exportLock = new();

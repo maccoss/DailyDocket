@@ -20,6 +20,12 @@ public sealed record MailItem(string Key, string From, string Age, int Staleness
 /// <param name="Quoted">The quoted history below the message, folded away; null when there is none.</param>
 public sealed record MessageView(string From, string When, string Recipients, string Text, string? Quoted, bool IsMine);
 
+/// <summary>A reply on its way out, shown under the conversation it answers.</summary>
+public sealed record OutboxView(DailyDocket.Core.Outbox.OutboxItem Item, string Status, string? Problem, bool CanUndo, bool CanRetry)
+{
+    public string Preview => Item.Text.Length > 140 ? Item.Text[..140] + "…" : Item.Text;
+}
+
 /// <summary>A conversation on the Slack tab.</summary>
 /// <param name="LastTs">The newest message's ts: what a Handled mark covers.</param>
 public sealed record SlackItem(string Key, string From, string Age, bool Stale, string Where, string Text, string? Why, string LastTs);

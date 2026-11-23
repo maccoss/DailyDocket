@@ -29,6 +29,17 @@ impact first, empty headings deleted at release.
 - **The dashboard artifact's to-dos came across.** `DailyDocket.exe --import-artifact <folder>`
   brought the artifact's 22 to-dos and 238 Handled marks into the data repository, in the order
   the artifact showed them, and moved `docket.yaml` there so every computer shares it.
+- **Reply in the app.** **Reply** and **Reply all** on an email, and **Reply** on a Slack
+  conversation, opened a reply box under it: recipients as chips that could be removed or added
+  (email), and bold, italic, underline, bulleted and numbered lists and links. Email went as
+  formatted HTML with a plain-text copy; Slack as Markdown. The reply was saved as a draft on every
+  pause, offline included, and reopened with its conversation.
+- **The outbox.** **Send** queued a reply for 60 seconds (`"UndoWindowSeconds"`) with **Undo**,
+  then sent it once the computer was online. If anyone had written in the conversation since the
+  reply was started, it was held for a look instead, with **Send again**, **Edit** and **Discard**;
+  a reply refused by Gmail or Slack said why. A send could only deliver exactly what was written,
+  to exactly the recipients shown, once: the run that sends never reads mail, and a hook refuses
+  any other call. Unsent replies were also kept in `outbox.json`.
 - **Syncing.** DailyDocket synced on start, every 15 minutes (`"PullIntervalMinutes"`) and on
   **Refresh**, through Claude Code with read-only tools: it could not send, reply or change
   anything. Mail threads were read only when they changed, and Claude judged each conversation

@@ -4,6 +4,7 @@ using DailyDocket.App.ViewModels;
 using DailyDocket.Core.Configuration;
 using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Jobs;
+using DailyDocket.Core.Outbox;
 using DailyDocket.Core.Processes;
 using DailyDocket.Core.Sync;
 using DailyDocket.Core.Todos;
@@ -173,6 +174,16 @@ public static class Program
             HookLocator.Find(),
             provider.GetRequiredService<ILogger<JobRunner>>()));
         services.AddSingleton<SyncScheduler>();
+        services.AddSingleton(provider => new OutboxStore(provider.GetRequiredService<DocketDatabase>(), paths.OutboxExportFile));
+        services.AddSingleton(provider =>
+        {
+            var settings = provider.GetRequiredService<AppSettings>();
+            return new OutboxWorker(
+                provider.GetRequiredService<OutboxStore>(),
+                provider.GetRequiredService<JobRunner>(),
+                () => (settings.PullModel, settings.IncludeSignature, AppInfo.MachineName),
+                provider.GetRequiredService<ILogger<OutboxWorker>>());
+        });
 
         services.AddSingleton<TodoViewModel>();
         services.AddSingleton<MainViewModel>();
