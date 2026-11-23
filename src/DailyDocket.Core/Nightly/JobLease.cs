@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using DailyDocket.Core.Configuration;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -85,6 +86,8 @@ public static class LeaseFile
         .IgnoreUnmatchedProperties()
         .Build();
 
+    private static readonly JsonSerializerOptions Quote = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     public static string PathIn(string repositoryRoot) => Path.Combine(repositoryRoot, "state", "lease.yaml");
 
     public static JobLease? Load(string repositoryRoot)
@@ -106,7 +109,9 @@ public static class LeaseFile
     public static string Format(JobLease lease)
     {
         var sb = new StringBuilder();
-        sb.Append("holder: ").Append(lease.Holder).Append('\n');
+        // Quoted, as verdict files are: a machine named null, yes or 0123 would otherwise read
+        // back as a null, a boolean or a number.
+        sb.Append("holder: ").Append(JsonSerializer.Serialize(lease.Holder, Quote)).Append('\n');
         sb.Append("renewed: ").Append(Iso(lease.Renewed)).Append('\n');
         sb.Append("due: ").Append(Iso(lease.Due)).Append('\n');
         if (lease.LastNightly is { } n)

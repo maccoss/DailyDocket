@@ -27,7 +27,7 @@ public static class ConnectorTools
 
     /// <summary>
     /// The Google Drive connector, for meeting prep. Not in the spike's recording (it was not
-    /// connected then); these names were listed by ToolSearch in a headless run on skiddaw,
+    /// connected then); these names were listed by ToolSearch in a headless run in
     /// November 2026 (LivePrepTests.Drive_tool_names). A run whose Drive tools do not load simply
     /// works without them.
     /// </summary>

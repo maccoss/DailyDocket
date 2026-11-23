@@ -136,6 +136,8 @@ impact first, empty headings deleted at release.
   window said "A to-do was changed on two computers at once" and kept a set-aside branch. Verdicts,
   briefs and the nightly lease now take the copy already sent from the other computer; the banner
   appears only when a to-do really conflicts.
+- A computer named, for example, `null`, `yes` or `no` could not hold the nightly lease: its name
+  read back as something else. The name is now quoted in `state/lease.yaml`.
 
 - Closing DailyDocket no longer showed "DailyDocket could not start: The CancellationTokenSource
   has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),

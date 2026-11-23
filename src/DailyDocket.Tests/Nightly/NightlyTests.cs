@@ -99,14 +99,27 @@ public sealed class NightlyTests
 
         var text = LeaseFile.Format(lease);
 
-        text.ShouldBe("holder: skiddaw\nrenewed: 2026-11-23T02:05:00-08:00\ndue: 2026-11-23T12:30:00-08:00\nnightly: 2026-11-23T02:05:00-08:00\n");
+        text.ShouldBe("holder: \"skiddaw\"\nrenewed: 2026-11-23T02:05:00-08:00\ndue: 2026-11-23T12:30:00-08:00\nnightly: 2026-11-23T02:05:00-08:00\n");
         LeaseFile.Parse(text).ShouldBe(lease);
         LeaseFile.Parse("holder: [unclosed").ShouldBeNull();
         LeaseFile.Parse("holder: skiddaw\n").ShouldBeNull();
     }
 
     [Theory]
-    [InlineData(23, 1, 0, null, null, NightlySlot.None)]          // before 2 a.m., the 22nd's run done
+    [InlineData("null")]
+    [InlineData("yes")]
+    [InlineData("no")]
+    [InlineData("0123")]
+    [InlineData("lab \"pc\": 2")]
+    public void A_machine_name_that_yaml_would_read_as_something_else_round_trips(string machine)
+    {
+        var lease = new JobLease(machine, Local(23, 2, 5), Local(23, 12, 30), null, null);
+
+        LeaseFile.Parse(LeaseFile.Format(lease)).ShouldNotBeNull().Holder.ShouldBe(machine);
+    }
+
+    [Theory]
+    [InlineData(23, 1, 0, null, null, NightlySlot.None)]         // before 2 a.m., the 22nd's run done
     [InlineData(23, 2, 1, null, null, NightlySlot.Nightly)]       // just after 2 a.m.
     [InlineData(23, 9, 0, null, null, NightlySlot.Nightly)]       // the machine slept through 2 a.m.
     [InlineData(23, 9, 0, 2, null, NightlySlot.None)]             // done at 2 a.m.
