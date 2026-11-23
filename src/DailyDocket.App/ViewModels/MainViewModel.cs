@@ -848,9 +848,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the timers and background work. Called twice on exit (the window's closing, then the
+    /// service container), so it must be safe to repeat: a second Cancel on a disposed source threw
+    /// and was reported as a failed start.
+    /// </summary>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _countdown.Stop();
         _stop.Cancel();
         _stop.Dispose();
     }
+
+    private bool _disposed;
 }

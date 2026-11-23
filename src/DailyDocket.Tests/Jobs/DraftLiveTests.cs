@@ -26,14 +26,20 @@ public sealed class DraftLiveTests(ITestOutputHelper output)
         var db = DocketDatabase.Open(Path.Combine(folder!, "docket.db"), "live-test");
         var store = new Store(db);
         var jobs = new JobStore(store, new CaptureIngestor(db, () => config, TimeZoneInfo.Local), () => config);
-        var row = store.MailRows(DateTimeOffset.UtcNow.AddDays(-30)).Rows.First(r => r.State == "Owed");
+        // DAILYDOCKET_DRAFT_SUBJECT picks a thread by subject; DAILYDOCKET_GUIDES is a config/replies folder.
+        var subject = Environment.GetEnvironmentVariable("DAILYDOCKET_DRAFT_SUBJECT");
+        var rows = store.MailRows(DateTimeOffset.UtcNow.AddDays(-30)).Rows;
+        var row = rows.FirstOrDefault(r => subject is not null && r.Subject.Contains(subject, StringComparison.OrdinalIgnoreCase)) ?? rows.First(r => r.State == "Owed");
         var conversation = string.Join("\n\n", store.ThreadMessages(row.ThreadId).Select(m => $"--- From: {m.Sender}\n{MailText.SplitQuoted(m.Body).Message}"));
+        var guides = Environment.GetEnvironmentVariable("DAILYDOCKET_GUIDES") is { } folder2 ? ReplyGuide.Load(folder2) : [];
+        var guide = ReplyGuide.Choose(guides, conversation);
+        output.WriteLine($"Guide: {guide?.Title ?? "(none)"}");
 
         var paths = new AppPaths(Directory.CreateTempSubdirectory("dd-draft-").FullName);
         paths.EnsureCreated();
         var tools = new ToolLocator();
         var runner = new JobRunner(tools, new ProcessRunner(tools), paths, jobs, () => config, "unused.exe");
-        var outcome = await runner.RunAsync(DraftPlans.Draft(config, true, conversation, store.RecentFromMe(config, 4), null, "sonnet"));
+        var outcome = await runner.RunAsync(DraftPlans.Draft(config, true, conversation, store.RecentFromMe(config, 4), null, "sonnet", guide));
 
         output.WriteLine($"Thread: {row.Subject} (from {row.WaitingOn}); ok={outcome.Ok} cost={outcome.CostUsd:0.000} {outcome.Detail}");
         output.WriteLine(DraftPlans.HouseStyle(outcome.FinalText ?? ""));

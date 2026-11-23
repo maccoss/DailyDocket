@@ -48,18 +48,33 @@ public static class Program
             Serilog.Log.Information("Starting {Product} {Version} ({Rid}) on {Machine}; data directory {Root}",
                 AppInfo.ProductName, AppInfo.InformationalVersion, AppInfo.RuntimeIdentifier, AppInfo.MachineName, paths.Root);
 
-            using var services = BuildServiceProvider(paths);
+            var services = BuildServiceProvider(paths);
+            int code;
 
             // One-time move from the dashboard artifact: DailyDocket.exe --import-artifact <folder>,
             // where the folder holds its database exported as todos/, handled/ and slackHandled/.
             if (args.Length == 2 && args[0] == "--import-artifact")
             {
-                return ImportArtifact(services, args[1]);
+                code = ImportArtifact(services, args[1]);
+            }
+            else
+            {
+                var app = new App(services, instance);
+                app.InitializeComponent();
+                code = app.Run();
             }
 
-            var app = new App(services, instance);
-            app.InitializeComponent();
-            return app.Run();
+            // The window is gone: a problem while cleaning up is logged, never reported as a failed start.
+            try
+            {
+                services.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "Cleanup after closing failed.");
+            }
+
+            return code;
         }
         catch (Exception ex)
         {

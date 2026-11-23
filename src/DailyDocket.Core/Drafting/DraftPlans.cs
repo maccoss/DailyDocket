@@ -14,7 +14,7 @@ public static partial class DraftPlans
 {
     public const string Job = "draft";
 
-    public static JobPlan Draft(DocketConfig config, bool isEmail, string conversation, IReadOnlyList<string> styleExamples, string? guidance, string model)
+    public static JobPlan Draft(DocketConfig config, bool isEmail, string conversation, IReadOnlyList<string> styleExamples, string? guidance, string model, ReplyGuide? guide = null)
     {
         var owner = Briefs.Owner(config);
         var first = config.Owner.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "him";
@@ -35,6 +35,15 @@ public static partial class DraftPlans
         {
             sb.AppendLine();
             sb.AppendLine($"What {first} wants the reply to say: {guidance.Trim()}");
+        }
+
+        if (guide is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"{first} has a guide for this kind of email: \"{guide.Title}\". Follow it, but write for this person: answer what they actually asked, and leave out any part of the guide that does not apply to them.");
+            sb.AppendLine("<guide>");
+            sb.AppendLine(guide.Text);
+            sb.AppendLine("</guide>");
         }
 
         if (styleExamples.Count > 0)

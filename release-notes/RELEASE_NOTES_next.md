@@ -44,6 +44,10 @@ impact first, empty headings deleted at release.
   in Mike's voice from his recent emails, for him to edit; an optional **Say** line told it what
   the reply should say. It never sent anything and never decided for him: a reply that turned on
   his decision came back with the choice in brackets. Drafts never contained em dashes.
+- **Reply guides.** A guide in the data repository's `config/replies` folder (one Markdown file per
+  kind of email, with the keywords that identify it) told Draft with Claude how Mike answers that
+  kind of email; the first, for prospective graduate students, came from his own replies and
+  corrections. The note under the box said when a guide was used.
 - **Syncing.** DailyDocket synced on start, every 15 minutes (`"PullIntervalMinutes"`) and on
   **Refresh**, through Claude Code with read-only tools: it could not send, reply or change
   anything. Mail threads were read only when they changed, and Claude judged each conversation
@@ -55,6 +59,10 @@ impact first, empty headings deleted at release.
   SQLCipher, with its key kept in Windows Credential Manager.
 
 ## Bug Fixes
+
+- Closing DailyDocket no longer showed "DailyDocket could not start: The CancellationTokenSource
+  has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),
+  and a problem while cleaning up is now logged rather than reported as a failed start.
 
 ## Performance
 

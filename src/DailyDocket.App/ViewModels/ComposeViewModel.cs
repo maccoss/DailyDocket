@@ -56,9 +56,11 @@ public sealed partial class ComposeViewModel : ObservableObject
         Note = "Claude is drafting...";
         try
         {
-            var draft = await _drafter.DraftAsync(IsEmail, _conversation(), Guidance, CancellationToken.None);
+            var (draft, guide) = await _drafter.DraftAsync(IsEmail, _conversation(), Guidance, CancellationToken.None);
             DraftReady?.Invoke(draft);
-            Note = "Claude's draft is in the box. Read and edit it before sending.";
+            Note = guide is null
+                ? "Claude's draft is in the box. Read and edit it before sending."
+                : $"Claude's draft, following your guide \"{guide}\", is in the box. Read and edit it before sending.";
         }
         catch (InvalidOperationException e)
         {
