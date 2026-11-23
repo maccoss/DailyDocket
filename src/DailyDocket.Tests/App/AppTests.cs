@@ -23,6 +23,8 @@ public sealed class AppTests
             {
                 services.GetRequiredService<MainViewModel>().ShouldNotBeNull();
                 services.GetRequiredService<SyncScheduler>().ShouldNotBeNull();
+                services.GetRequiredService<UpdateBarViewModel>().ShouldNotBeNull();
+                services.GetRequiredService<DailyDocket.Core.Setup.SetupChecks>().ShouldNotBeNull();
             }
 
             SqliteConnection.ClearAllPools();

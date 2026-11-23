@@ -1,0 +1,258 @@
+# Release: triggered by a v* tag. Builds both installers and publishes the GitHub Release that the
+# app's update check reads. Do not hand-create the Release. See release-notes/README.md.
+#
+# Adapted from LabOps' release.yml. The differences:
+#   - Two runtimes, each built natively on its own runner (win-x64 on windows-latest, win-arm64 on
+#     windows-11-arm), because nothing may depend on x64 emulation and Native AOT does not
+#     cross-compile between Windows architectures without extra toolchains.
+#   - One Velopack channel per runtime (win-x64, win-arm64, and -beta of each), so an installed
+#     copy only ever sees its own runtime's packages (AppInfo.UpdateChannel).
+#   - The hook (DailyDocket.Hook.exe) is published with Native AOT and copied beside the app, where
+#     JobRunner finds it (HookLocator).
+#   - Packing happens in the matrix, but uploading happens once, in a final job, one runtime after
+#     the other. Two jobs uploading with --merge at the same moment could both try to create the
+#     Release, and SHA256SUMS has to cover both runtimes.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # The vpk that matches the Velopack package in src/DailyDocket.App/DailyDocket.App.csproj.
+  VPK_VERSION: "1.2.161"
+
+jobs:
+  meta:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      beta: ${{ steps.meta.outputs.beta }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version lives in one place, Directory.Build.props, and a tagged build must agree with
+      # it. A tag containing "beta" goes to the beta channels only.
+      - name: Resolve and verify version
+        id: meta
+        shell: bash
+        run: |
+          PROPS=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | tr -d '[:space:]')
+          if [ -z "$PROPS" ]; then
+            echo "::error::Could not read <Version> from Directory.Build.props"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$TAG" != "$PROPS" ]; then
+              echo "::error::Directory.Build.props Version ($PROPS) does not match tag ($TAG). Bump the property, commit, then re-tag."
+              exit 1
+            fi
+            VERSION="$TAG"
+          else
+            VERSION="$PROPS"
+          fi
+          case "$VERSION" in *beta*) BETA=true ;; *) BETA=false ;; esac
+          case "$VERSION" in *alpha*|*beta*|*rc*) PRERELEASE=true ;; *) PRERELEASE=false ;; esac
+          {
+            echo "version=$VERSION"
+            echo "beta=$BETA"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION beta=$BETA prerelease=$PRERELEASE"
+
+      - name: Locate the release notes
+        id: notes
+        shell: bash
+        run: |
+          NOTES="release-notes/RELEASE_NOTES_v${{ steps.meta.outputs.version }}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::Expected release notes at $NOTES. Rename the draft (release-notes/RELEASE_NOTES_next.md) before tagging; see release-notes/README.md."
+            exit 1
+          fi
+          echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and pack (${{ matrix.rid }})
+    needs: meta
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      # The channel names must match AppInfo.UpdateChannelFor.
+      CHANNEL: ${{ needs.meta.outputs.beta == 'true' && format('{0}-beta', matrix.rid) || matrix.rid }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test --project src/DailyDocket.Tests/DailyDocket.Tests.csproj -c Release
+
+      - name: Publish the app
+        run: >
+          dotnet publish src/DailyDocket.App/DailyDocket.App.csproj
+          -c Release -r ${{ matrix.rid }} --self-contained true
+          -p:PublishReadyToRun=true
+          -o artifacts/publish
+
+      # The app's own publish carries the hook as an ordinary .NET program (the project reference);
+      # the release replaces its exe with the Native AOT one, which starts in milliseconds on every
+      # tool call. The managed DailyDocket.Hook.dll stays: DailyDocket.deps.json lists it, and the
+      # app will not start with a listed file missing.
+      - name: Publish the hook (Native AOT) beside the app
+        shell: pwsh
+        run: |
+          dotnet publish src/DailyDocket.Hook/DailyDocket.Hook.csproj -c Release -r ${{ matrix.rid }} -o "$env:RUNNER_TEMP/hook"
+          if ($LASTEXITCODE -ne 0) { throw "The hook did not publish" }
+          Copy-Item "$env:RUNNER_TEMP/hook/DailyDocket.Hook.exe" artifacts/publish/ -Force
+          # A guard with unreadable input must block (exit 2), never let the call through.
+          'not json' | & artifacts/publish/DailyDocket.Hook.exe guard --claims missing.json
+          if ($LASTEXITCODE -ne 2) { throw "The published guard exited $LASTEXITCODE on bad input; expected 2" }
+          $global:LASTEXITCODE = 0
+
+      # LabOps once shipped a referenced exe's dependency manifest in place of the app's, and it did
+      # not start. The app's must be there under its own name, with the hook exe beside it.
+      - name: Check the publish folder
+        shell: pwsh
+        run: |
+          $manifests = @(Get-ChildItem artifacts/publish -Filter *.deps.json | Where-Object Name -ne 'DailyDocket.Hook.deps.json')
+          if ($manifests.Count -ne 1 -or $manifests[0].Name -cne 'DailyDocket.deps.json') { throw "Expected DailyDocket.deps.json, found: $($manifests.Name -join ', ')" }
+          if ((Get-Content $manifests[0].FullName -Raw) -notmatch '"Velopack/') { throw "DailyDocket.deps.json is not the app's own" }
+          foreach ($exe in 'DailyDocket.exe', 'DailyDocket.Hook.exe') {
+            if (-not (Test-Path "artifacts/publish/$exe")) { throw "$exe is missing from the publish folder" }
+          }
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      # vpk builds a delta against the previous full package, which a fresh runner does not have.
+      # Failure is expected for the first release on a channel.
+      - name: Download the previous release as a delta base
+        continue-on-error: true
+        shell: bash
+        run: |
+          for pre in false true; do
+            vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token "${{ secrets.GITHUB_TOKEN }}" \
+              --channel "$CHANNEL" --outputDir artifacts/releases --pre "$pre" \
+              || echo "No previous release found (pre=$pre); this is fine."
+          done
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $sign = @()
+          if ($env:SIGNING_CERT_BASE64) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+            $sign = @('--signParams', "/f $env:RUNNER_TEMP\cert.pfx /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256")
+          } else {
+            Write-Warning "No signing certificate configured; this build is unsigned and will trigger SmartScreen."
+          }
+          vpk pack `
+            --packId MacCoss.DailyDocket `
+            --packVersion $env:VERSION `
+            --packDir artifacts/publish `
+            --mainExe DailyDocket.exe `
+            --packTitle "DailyDocket" `
+            --packAuthors "MacCoss Lab, University of Washington" `
+            --icon src/DailyDocket.App/Assets/app.ico `
+            --releaseNotes ${{ needs.meta.outputs.notes }} `
+            --channel $env:CHANNEL `
+            --runtime ${{ matrix.rid }} `
+            --outputDir artifacts/releases `
+            @sign
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack failed" }
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+
+      - name: Keep the packages for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: releases-${{ matrix.rid }}
+          path: artifacts/releases
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub Release
+    needs: [meta, build]
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      BETA: ${{ needs.meta.outputs.beta }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      - name: Fetch both runtimes' packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: releases-*
+          path: artifacts
+
+      # Only this version's files: the delta bases downloaded for packing are last release's.
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/releases-*/* -File |
+            Where-Object { $_.Extension -ne '.nupkg' -or $_.Name -like "*-$env:VERSION-*" } |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content artifacts/SHA256SUMS.txt
+          Get-Content artifacts/SHA256SUMS.txt
+
+      # One runtime after the other, each into the same Release (--merge).
+      - name: Upload to GitHub Releases
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            $channel = if ($env:BETA -eq 'true') { "$rid-beta" } else { $rid }
+            $arguments = @(
+              'upload', 'github',
+              '--repoUrl',     'https://github.com/${{ github.repository }}',
+              '--token',       '${{ secrets.GITHUB_TOKEN }}',
+              '--outputDir',   "artifacts/releases-$rid",
+              '--channel',     $channel,
+              '--tag',         "v$env:VERSION",
+              '--releaseName', "DailyDocket $env:VERSION",
+              '--merge',
+              '--publish'
+            )
+            if ('${{ needs.meta.outputs.prerelease }}' -eq 'true') { $arguments += '--pre' }
+            vpk @arguments
+            if ($LASTEXITCODE -ne 0) { throw "Uploading $rid failed" }
+          }
+
+      - name: Attach checksums and set the release description
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v${{ env.VERSION }} artifacts/SHA256SUMS.txt --clobber
+          gh release edit v${{ env.VERSION }} --notes-file ${{ needs.meta.outputs.notes }}

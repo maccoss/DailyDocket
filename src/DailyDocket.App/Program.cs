@@ -6,12 +6,14 @@ using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Jobs;
 using DailyDocket.Core.Outbox;
 using DailyDocket.Core.Processes;
+using DailyDocket.Core.Setup;
 using DailyDocket.Core.Sync;
 using DailyDocket.Core.Todos;
 using DailyDocket.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog.Extensions.Logging;
+using Velopack;
 
 namespace DailyDocket.App;
 
@@ -21,6 +23,9 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Must be first. On an install, update or uninstall hook this call never returns.
+        VelopackApp.Build().OnRestarted(_ => UpdateService.RestartedByInstaller = true).Run();
+
         // DAILYDOCKET_DATA points the app at another data folder, for development.
         var paths = new AppPaths(Environment.GetEnvironmentVariable("DAILYDOCKET_DATA"));
         paths.EnsureCreated();
@@ -199,6 +204,10 @@ public static class Program
                 () => (settings.PullModel, settings.IncludeSignature, AppInfo.MachineName),
                 provider.GetRequiredService<ILogger<OutboxWorker>>());
         });
+
+        services.AddSingleton(provider => new SetupChecks(provider.GetRequiredService<ProcessRunner>(), provider.GetRequiredService<ToolLocator>()));
+        services.AddSingleton<UpdateService>();
+        services.AddSingleton<UpdateBarViewModel>();
 
         services.AddSingleton<Drafter>();
         services.AddSingleton<TodoViewModel>();
