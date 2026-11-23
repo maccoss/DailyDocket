@@ -27,6 +27,24 @@ public sealed class OutboxTests : IDisposable
         "<FlowDocument/>", "<p>Thanks, <b>Friday</b> works.</p>", "Thanks, Friday works.", Now, Now, null, null, "skiddaw", 0, null, null);
 
     [Fact]
+    public void A_sent_reply_marks_its_conversation_handled_up_to_what_it_answered()
+    {
+        var at = new DateTimeOffset(2026, 11, 20, 17, 0, 0, TimeSpan.Zero);
+        DateTimeOffset? Time(string id) => id == "msg-a3" ? at : null;
+
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent), Time).ShouldBe(("email", "thread-a", at.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+        var slack = Email(OutboxStatus.Sent) with { Kind = OutboxKind.SlackReply, Target = "D027N01NGBD~main", Base = "1794514266.666729" };
+        OutboxRules.HandledBySend(slack, Time).ShouldBe(("slack", "D027N01NGBD~main", "1794514266.666729"));
+
+        // Not yet sent, held, or not a reply: nothing is marked.
+        OutboxRules.HandledBySend(Email(OutboxStatus.Queued), Time).ShouldBeNull();
+        OutboxRules.HandledBySend(slack with { Status = OutboxStatus.Held }, Time).ShouldBeNull();
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent) with { Kind = OutboxKind.CalendarResponse }, Time).ShouldBeNull();
+        // An email whose base message is not in the cache: no time to mark it by.
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent) with { Base = "msg-gone" }, Time).ShouldBeNull();
+    }
+
+    [Fact]
     public void Reply_goes_to_the_person_he_is_answering()
     {
         var thread = new[] { Msg("1", "Pat Example <pat@example.org>", 9, ["owner@example.org", "sam@example.org"], ["lee@example.org"]) };

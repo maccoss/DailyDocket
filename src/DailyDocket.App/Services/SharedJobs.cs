@@ -156,7 +156,7 @@ public sealed class SharedJobs
         var config = provider.GetRequiredService<Func<DocketConfig>>()();
         var now = DateTimeOffset.UtcNow;
 
-        var outcomes = new List<JobOutcome> { await runner.RunAsync(JobPlans.DeepSweepRun(config, now, settings.PullModel), cancellationToken) };
+        var outcomes = new List<JobOutcome> { await runner.RunAsync(JobPlans.DeepSweepRun(config, now, TimeZoneInfo.FindSystemTimeZoneById(config.Schedule.TimeZone), settings.PullModel), cancellationToken) };
         provider.GetRequiredService<SharedJobs>().ImportVerdicts();
         // The sweep can find many old conversations; the night has time for more runs than a sync.
         outcomes.AddRange(await JobPlans.TriageAllAsync(jobs, plan => runner.RunAsync(plan, cancellationToken), settings.JudgmentModel, 150));

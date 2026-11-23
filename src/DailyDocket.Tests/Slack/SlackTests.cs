@@ -108,6 +108,18 @@ public sealed class SlackTests
         SlackRules.Others(SlackParser.ParseSearch(Envelope()).Messages[0], "Owner Person").ShouldBe("Pat Example");
     }
 
+    [Fact]
+    public void A_group_dm_is_titled_by_its_members_and_a_channel_by_its_name()
+    {
+        // Slack's search calls every group DM just "Group DM"; its members are what Slack lists it under.
+        var group = new SlackMessage("C0000000009", "Group DM", "Owner Person (ID: U0000000001), Pat Example (ID: U0000000002), Sam Lee (ID: U0000000003)",
+            "U0000000002", "Pat Example", "1795067112.830919", null, null, "Can you look at this?");
+
+        SlackRules.Where(group, "Owner Person").ShouldBe("Group DM · Pat Example, Sam Lee");
+        SlackRules.Where(group with { ChannelLabel = "#general", Participants = "" }, "Owner Person").ShouldBe("#general");
+        SlackRules.Where(SlackParser.ParseSearch(Envelope()).Messages[0], "Owner Person").ShouldBe("Pat Example");
+    }
+
     [Theory]
     [InlineData("Hi <@U0000000001|Owner Person>, ready?", "Hi @Owner Person, ready?")]
     [InlineData("cc <@U0000000002>", "cc @U0000000002")]

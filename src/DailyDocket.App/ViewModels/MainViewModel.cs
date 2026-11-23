@@ -71,6 +71,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 QueueMarkRead(changed.Target, DateTimeOffset.UtcNow);
             }
 
+            // Answered: off the tab now, on every computer, not after the next pull reads it back.
+            if (OutboxRules.HandledBySend(changed, id => _store.ThreadMessages(changed.Target).FirstOrDefault(m => m.Id == id)?.Date) is { } handled)
+            {
+                _book.MarkHandled(handled.Kind, handled.Key, handled.UpTo);
+            }
+
             ReloadOutbox();
             Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
         });

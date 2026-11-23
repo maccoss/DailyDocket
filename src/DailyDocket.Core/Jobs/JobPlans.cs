@@ -55,8 +55,22 @@ public static class JobPlans
     /// <summary>How far back an incremental sweep looks.</summary>
     public const int IncrementalDays = 2;
 
-    /// <summary>Mail threads read per run; the rest wait for the next one.</summary>
+    /// <summary>Mail threads read per round of thread reads; the rest wait for the next round or run.</summary>
     public const int ThreadsPerRun = 40;
+
+    /// <summary>
+    /// Rounds of thread reads in a mail pull. Day searches find several hundred threads on a first
+    /// sweep (357 against the 50 one search returned); reads are cheap, so three rounds a pull clear
+    /// that in about three syncs instead of eight.
+    /// </summary>
+    public const int ReadRounds = 3;
+
+    /// <summary>
+    /// The most threads one Gmail search returns. The connector sends no next page (checked live,
+    /// November 2026: 50 of an estimated 747, and no page token even for a page of 5), so a search
+    /// that comes back with this many may have left mail out; see <see cref="DaySearches"/>.
+    /// </summary>
+    public const int SearchPageSize = 50;
 
     /// <summary>
     /// The prompt's arguments are copied by the model, so they are written literally: the default
@@ -97,26 +111,58 @@ public static class JobPlans
         return new JobPlan(Calendar, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 20, new Dictionary<string, string>());
     }
 
-    public static JobPlan MailPull(DocketConfig config, DateTimeOffset now, string? lastFullSweep, string model)
+    /// <remarks>
+    /// One search per day rather than one for the window: Gmail's search returns at most
+    /// <see cref="SearchPageSize"/> threads, ranked by relevance rather than date, with no next
+    /// page, so a 30-day search saw 50 of several hundred threads and an important email from four
+    /// days earlier was never read (November 2026). A day rarely has 50; one that does is logged.
+    /// </remarks>
+    public static JobPlan MailPull(DocketConfig config, DateTimeOffset now, TimeZoneInfo zone, string? lastFullSweep, string model)
     {
         var full = IsDue(lastFullSweep, now);
         var days = full ? config.Mail.WindowDays : IncrementalDays;
         string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.ListDrafts, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
-        var search = JsonSerializer.Serialize(new { query = $"{InboxQuery} newer_than:{days}d", pageSize = 50, view = "THREAD_VIEW_SUMMARY" }, Json);
+        var searches = string.Join('\n', DaySearches(now, zone, days, 0).Select(a => "   - " + a));
         var drafts = JsonSerializer.Serialize(new { pageSize = 50, view = "DRAFT_VIEW_METADATA_ONLY" }, Json);
 
         var prompt = Preamble("mail pull", tools) +
             $"""
-            1. Call {ConnectorTools.SearchThreads} {search}
-               While a receipt lists a nextPageToken, call it again with the same arguments plus that pageToken, up to 8 pages in all.
+            1. Call {ConnectorTools.SearchThreads} once with each of these arguments (one search per day; they are independent, so you may call several together):
+            {searches}
             2. Call {ConnectorTools.ListDrafts} {drafts}
             3. Call {AppTools.ThreadsToReadToolName}. It returns the thread ids the app needs read.
             4. For each id it returned, call {ConnectorTools.GetThread} {"{"}"threadId": "<id>", "messageFormat": "PLAIN_TEXT"{"}"}. These are independent; you may call several together.
+            5. Repeat steps 3 and 4 until it returns no ids, at most {ReadRounds} times in all.
             """;
 
         var marks = full ? new Dictionary<string, string> { ["mail/full"] = Iso(now) } : new Dictionary<string, string>();
-        return new JobPlan(Mail, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 120, marks);
+        return new JobPlan(Mail, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 250, marks);
     }
+
+    /// <summary>
+    /// One inbox search per day, newest first, from <paramref name="toDaysAgo"/> to
+    /// <paramref name="fromDaysAgo"/> days before today (both included), in Mike's time zone.
+    /// </summary>
+    /// <remarks>
+    /// Gmail dates (after: inclusive, before: exclusive, each at midnight) rather than Unix times:
+    /// the connector returned nothing for after:/before: given in seconds (checked live). A thread
+    /// is found on each day it had a message; the app merges them by thread id.
+    /// </remarks>
+    internal static IReadOnlyList<string> DaySearches(DateTimeOffset now, TimeZoneInfo zone, int fromDaysAgo, int toDaysAgo)
+    {
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var searches = new List<string>();
+        for (var ago = toDaysAgo; ago <= fromDaysAgo; ago++)
+        {
+            var day = today.AddDays(-ago);
+            var query = $"{InboxQuery} after:{GmailDate(day)} before:{GmailDate(day.AddDays(1))}";
+            searches.Add(JsonSerializer.Serialize(new { query, pageSize = SearchPageSize, view = "THREAD_VIEW_SUMMARY" }, Json));
+        }
+
+        return searches;
+    }
+
+    private static string GmailDate(DateOnly day) => day.ToString("yyyy'/'MM'/'dd", CultureInfo.InvariantCulture);
 
     public static JobPlan SlackPull(DocketConfig config, DateTimeOffset now, TimeZoneInfo zone, string? lastFullSweep, string model)
     {
@@ -216,35 +262,33 @@ public static class JobPlans
 
     public const string DeepSweep = "deep";
 
-    /// <summary>Pages of search results the deep sweep follows, and rounds of thread reads it makes.</summary>
-    public const int DeepPages = 10;
-
+    /// <summary>Rounds of thread reads the deep sweep makes.</summary>
     public const int DeepReadRounds = 3;
 
     /// <summary>
     /// The nightly deep sweep: the same read-only mail pull as every 15 minutes, over the inbox
     /// older than the live window (back to mail.deepDays), so old threads still waiting on Mike are
-    /// read and then judged by the usual triage run. Bounded: at most <see cref="DeepPages"/> pages
-    /// and <see cref="DeepReadRounds"/> rounds of <see cref="ThreadsPerRun"/> thread reads a night;
-    /// the rest wait for the next night.
+    /// read and then judged by the usual triage run. One search per day, as in <see cref="MailPull"/>;
+    /// at most <see cref="DeepReadRounds"/> rounds of <see cref="ThreadsPerRun"/> thread reads a
+    /// night; the rest wait for the next night.
     /// </summary>
-    public static JobPlan DeepSweepRun(DocketConfig config, DateTimeOffset now, string model)
+    public static JobPlan DeepSweepRun(DocketConfig config, DateTimeOffset now, TimeZoneInfo zone, string model)
     {
         string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
         var older = Math.Max(1, config.Mail.WindowDays);
         var newer = Math.Max(older + 1, config.Mail.DeepDays);
-        var search = JsonSerializer.Serialize(new { query = $"{InboxQuery} older_than:{older}d newer_than:{newer}d", pageSize = 50, view = "THREAD_VIEW_SUMMARY" }, Json);
+        var searches = string.Join('\n', DaySearches(now, zone, newer, older + 1).Select(a => "   - " + a));
 
         var prompt = Preamble("nightly deep sweep", tools) +
             $"""
-            1. Call {ConnectorTools.SearchThreads} {search}
-               While a receipt lists a nextPageToken, call it again with the same arguments plus that pageToken, up to {DeepPages} pages in all.
+            1. Call {ConnectorTools.SearchThreads} once with each of these arguments (one search per day; they are independent, so you may call several together):
+            {searches}
             2. Call {AppTools.ThreadsToReadToolName}. It returns the thread ids the app needs read.
             3. For each id it returned, call {ConnectorTools.GetThread} {"{"}"threadId": "<id>", "messageFormat": "PLAIN_TEXT"{"}"}. These are independent; you may call several together.
             4. Repeat steps 2 and 3 until it returns no ids, at most {DeepReadRounds} times in all.
             """;
 
-        return new JobPlan(DeepSweep, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 200,
+        return new JobPlan(DeepSweep, model, prompt, ["ToolSearch", .. tools], ConnectorTools.ReaderDisallowed, true, 300,
             new Dictionary<string, string> { ["mail/deep"] = Iso(now) });
     }
 
