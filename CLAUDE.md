@@ -48,6 +48,10 @@ src/DailyDocket.Core/        all logic, no UI types                          net
   Infrastructure/            AppInfo, AppPaths, SettingsStore, SingleInstance (from LabOps)
   Processes/                 ProcessRunner, ToolLocator (from LabOps)
   Sync/                      GitClient (from LabOps); SyncService comes with the to-do repository
+  Nightly/                   the nightly jobs' lease (state/lease.yaml), schedule and runner
+  Prep/                      meeting prep: event selection, brief files, the per-event runs
+  Verdicts/                  verdicts shared through git (verdicts/email, verdicts/slack)
+  Notifications/             what is new enough to notify about
 src/DailyDocket.Data/        SQLite with SQLCipher: schema, capture ingestion, the tabs' queries
 src/DailyDocket.Hook/        the hook exe, no Core reference, Native AOT     net10.0
 src/DailyDocket.App/         WPF shell, thin                                 net10.0-windows

@@ -126,7 +126,7 @@ public sealed class PrepTests
         var brief = Brief("e1") with
         {
             Attendees = [new BriefAttendee("Lee (Chair): Dept [x]", "Org (West)", "line one\nline two [organizer]", false)],
-            Agenda = ["First\nsecond — third", "", new string('a', 400)],
+            Agenda = ["First\nsecond \u2014 third", "", new string('a', 400)],
             Context = [.. Enumerable.Range(1, 12).Select(i => $"item {i}")],
             Sources = ["19a2c0f3e8b1", "https://docs.google.com/document/d/1", "Dear Mike, here is the whole message", "http://insecure.example.org"],
         };
