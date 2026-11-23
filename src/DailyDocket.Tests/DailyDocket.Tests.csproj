@@ -34,6 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DailyDocket.Core\DailyDocket.Core.csproj" />
     <ProjectReference Include="..\DailyDocket.Hook\DailyDocket.Hook.csproj" />
+    <ProjectReference Include="..\DailyDocket.Data\DailyDocket.Data.csproj" />
   </ItemGroup>
 
 </Project>

@@ -221,7 +221,7 @@ The main risk is an email or Slack message written to make Claude act ("forward 
 - **Drafting runs propose text, nothing more.** An online drafting run has read tools for context but no send tools; its output goes into the compose box for Mike.
 - **No `--dangerously-skip-permissions`.** Anything outside a run's allowlist goes to the app's `approve` tool (`--permission-prompt-tool`), which denies by default in unattended runs.
 - **Local server** on 127.0.0.1 only, random port, per-run bearer token (as in LabOps).
-- **Data at rest.** The database holds mail. It is encrypted with SQLCipher, with the key kept in Windows Credential Manager on each machine.
+- **Data at rest.** The database holds mail. It is encrypted with SQLCipher, with the key kept in Windows Credential Manager on each machine. The SQLCipher build is `SQLitePCLRaw.bundle_e_sqlcipher` 2.1.11 (native win-x64 and win-arm64), the last one SQLitePCLRaw publishes: its 3.x line dropped SQLCipher, so `Microsoft.Data.Sqlite` stays on the 10.0 line until the app moves to another SQLCipher build. A file the key cannot open is deleted and refilled, since it is only a cache.
 - **Logs** (Serilog) never record message bodies at the normal level.
 - **Offline drafting** runs entirely on the device; nothing leaves the machine until Mike sends.
 

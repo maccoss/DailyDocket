@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/DailyDocket.Core/DailyDocket.Core.csproj" />
+    <Project Path="src/DailyDocket.Data/DailyDocket.Data.csproj" />
     <Project Path="src/DailyDocket.Hook/DailyDocket.Hook.csproj" />
     <Project Path="src/DailyDocket.Tests/DailyDocket.Tests.csproj" />
   </Folder>
