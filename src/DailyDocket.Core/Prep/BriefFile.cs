@@ -111,6 +111,11 @@ public static partial class BriefFile
             sb.Append("eventUpdated: ").Append(Iso(u)).Append('\n');
         }
 
+        if (b.EventHash is { Length: > 0 } hash)
+        {
+            sb.Append("eventHash: ").Append(Q(hash)).Append('\n');
+        }
+
         sb.Append("written: ").Append(Iso(b.Written)).Append('\n');
         sb.Append("writtenOn: ").Append(Q(b.WrittenOn)).Append('\n');
         sb.Append("model: ").Append(Q(b.Model)).Append('\n');
@@ -187,7 +192,8 @@ public static partial class BriefFile
             f.Sources ?? [],
             Time(f.Written) ?? DateTimeOffset.UnixEpoch,
             f.WrittenOn ?? "",
-            f.Model ?? "");
+            f.Model ?? "",
+            f.EventHash is { Length: > 0 } hash ? hash : null);
     }
 
     /// <summary>"- Name (Org): role [organizer]", each part after the name optional.</summary>
@@ -258,6 +264,8 @@ public static partial class BriefFile
         public string? Start { get; set; }
 
         public string? EventUpdated { get; set; }
+
+        public string? EventHash { get; set; }
 
         public string? Written { get; set; }
 

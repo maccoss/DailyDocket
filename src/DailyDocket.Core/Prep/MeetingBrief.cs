@@ -13,8 +13,9 @@ public sealed record BriefAttendee(string Name, string Org, string Role, bool Or
 /// Briefs are the one place mail-derived text enters git, so every field is a short summary Claude
 /// wrote for Mike, capped in length, never a copied message (the repository is private for this reason).
 /// </remarks>
-/// <param name="EventUpdated">The event's updated time when the brief was written: a later one makes the brief stale.</param>
+/// <param name="EventUpdated">The event's updated time when the brief was written; kept for the record, no longer used for staleness.</param>
 /// <param name="Sources">Gmail thread ids and links the brief drew on.</param>
+/// <param name="EventHash">The event's <see cref="Calendar.CalendarEvent.ContentHash"/> when the brief was written: a different one makes it stale. Null in briefs written before it existed.</param>
 public sealed record MeetingBrief(
     string EventId,
     string Title,
@@ -28,7 +29,8 @@ public sealed record MeetingBrief(
     IReadOnlyList<string> Sources,
     DateTimeOffset Written,
     string WrittenOn,
-    string Model);
+    string Model,
+    string? EventHash = null);
 
 /// <summary>The caps and cleaning every brief passes, whatever the model wrote.</summary>
 public static partial class BriefRules

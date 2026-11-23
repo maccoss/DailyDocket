@@ -5,6 +5,10 @@ using DailyDocket.Core.Mail;
 namespace DailyDocket.Core.Calendar;
 
 /// <summary>One event on one of the owner's calendars.</summary>
+/// <param name="ContentHash">
+/// A hash of what a meeting brief depends on (start, end, title, description, location and the
+/// invited addresses); null for rows cached before it existed. See <see cref="CalendarParser.ContentHash"/>.
+/// </param>
 public sealed record CalendarEvent(
     string EventId,
     string CalendarKey,
@@ -18,7 +22,8 @@ public sealed record CalendarEvent(
     string? HtmlLink,
     string Status,
     string? EventType,
-    DateTimeOffset? Updated);
+    DateTimeOffset? Updated,
+    string? ContentHash = null);
 
 /// <summary>Turns Calendar <c>list_events</c> results into records.</summary>
 public static class CalendarParser
@@ -64,6 +69,7 @@ public static class CalendarParser
 
         string? mine = null;
         var guests = 0;
+        var emails = new List<string>();
         if (ev.TryGetProperty("attendees", out var attendees) && attendees.ValueKind == JsonValueKind.Array)
         {
             foreach (var a in attendees.EnumerateArray())
@@ -74,6 +80,11 @@ public static class CalendarParser
                 }
 
                 guests++;
+                if (GmailParser.Str(a, "email") is { } email)
+                {
+                    emails.Add(email);
+                }
+
                 if (Bool(a, "self"))
                 {
                     mine = GmailParser.Str(a, "responseStatus");
@@ -81,20 +92,43 @@ public static class CalendarParser
             }
         }
 
+        var title = GmailParser.Str(ev, "summary") ?? "(no title)";
+        var location = GmailParser.Str(ev, "location") ?? "";
+        var endValue = endAt ?? startAt.Value.AddHours(1);
         return new CalendarEvent(
             id,
             calendarKey,
             startAt.Value,
-            endAt ?? startAt.Value.AddHours(1),
+            endValue,
             allDay,
-            GmailParser.Str(ev, "summary") ?? "(no title)",
-            GmailParser.Str(ev, "location") ?? "",
+            title,
+            location,
             guests,
             mine,
             GmailParser.Str(ev, "htmlLink"),
             GmailParser.Str(ev, "status") ?? "confirmed",
             GmailParser.Str(ev, "eventType"),
-            DateTimeOffset.TryParse(GmailParser.Str(ev, "updated"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var u) ? u : null);
+            DateTimeOffset.TryParse(GmailParser.Str(ev, "updated"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var u) ? u : null,
+            ContentHash(startAt.Value, endValue, title, GmailParser.Str(ev, "description") ?? "", location, emails));
+    }
+
+    /// <summary>
+    /// What a brief depends on, hashed: start, end, title, description, location and the invited
+    /// addresses (sorted, case folded). The event's updated time was used before, but it moves
+    /// whenever any attendee answers the invitation, so every RSVP remade the brief.
+    /// </summary>
+    /// <remarks>Only the hash is kept: the description can be long and is not shown anywhere.</remarks>
+    public static string ContentHash(DateTimeOffset start, DateTimeOffset end, string title, string description, string location, IEnumerable<string> attendeeEmails)
+    {
+        var text = string.Join(
+            "\n",
+            start.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            end.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            title,
+            description.Replace("\r\n", "\n", StringComparison.Ordinal),
+            location,
+            string.Join(",", attendeeEmails.Select(e => e.Trim().ToLowerInvariant()).Where(e => e.Length > 0).Distinct().Order(StringComparer.Ordinal)));
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16];
     }
 
     /// <summary>A timed event has dateTime; an all-day event has a date, which is midnight in the calendar's zone.</summary>

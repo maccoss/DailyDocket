@@ -136,6 +136,9 @@ impact first, empty headings deleted at release.
   window said "A to-do was changed on two computers at once" and kept a set-aside branch. Verdicts,
   briefs and the nightly lease now take the copy already sent from the other computer; the banner
   appears only when a to-do really conflicts.
+- Every time someone answered a meeting invitation, its brief was marked out of date and written
+  again at the next run. A brief is now remade only when the meeting's time, title, description,
+  location or invited people change.
 - A computer named, for example, `null`, `yes` or `no` could not hold the nightly lease: its name
   read back as something else. The name is now quoted in `state/lease.yaml`.
 

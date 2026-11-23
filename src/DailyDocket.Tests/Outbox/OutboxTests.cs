@@ -278,4 +278,30 @@ public sealed class OutboxTests : IDisposable
         again.Watermark("mail", "full").ShouldBe("x");
         new OutboxStore(again.Database, null).WithStatus(OutboxStatus.Draft).ShouldBeEmpty();
     }
+
+    [Fact]
+    public void Adding_the_event_hash_keeps_the_cache_and_the_outbox()
+    {
+        var path = Path.Combine(_dir, "v2.db");
+        var db = DocketDatabase.Open(path, "k");
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                ALTER TABLE calendar_event DROP COLUMN content_hash;
+                INSERT INTO calendar_event (calendar_key, event_id, start_utc, end_utc, all_day, title, location, guests, status)
+                    VALUES ('work', 'e1', '2026-11-23T18:00:00.0000000+00:00', '2026-11-23T19:00:00.0000000+00:00', 0, 'Lab meeting', '', 3, 'confirmed');
+                PRAGMA user_version = 2;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        new OutboxStore(db, null).Save(Email());
+        SqliteConnection.ClearAllPools();
+        var again = new Store(DocketDatabase.Open(path, "k"));
+
+        var e = again.Events(new DateTimeOffset(2026, 11, 23, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 24, 0, 0, 0, TimeSpan.Zero)).ShouldHaveSingleItem();
+        e.ContentHash.ShouldBeNull();
+        new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
+    }
 }

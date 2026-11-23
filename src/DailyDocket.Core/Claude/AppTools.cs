@@ -242,7 +242,8 @@ public sealed class AppTools
             sources ?? [],
             DateTimeOffset.UtcNow,
             "",
-            "");
+            "",
+            target.Event.ContentHash);
         return run.SaveBrief(target, brief);
     }
 
