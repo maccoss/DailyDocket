@@ -183,7 +183,25 @@ public sealed class TodoBook : IDisposable
         {
             _pending.Add(summary);
             _timer?.Dispose();
-            _timer = new Timer(_ => _ = SyncNowAsync(), null, SyncDelay, Timeout.InfiniteTimeSpan);
+            _timer = new Timer(_ => _ = SyncInBackgroundAsync(), null, SyncDelay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>
+    /// The timer's sync. Its task is not awaited by anyone, so any failure (git missing, a file in
+    /// use) is caught here and reported through <see cref="Synced"/>, where the window shows it.
+    /// </summary>
+    private async Task SyncInBackgroundAsync()
+    {
+        try
+        {
+            await SyncNowAsync().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _log.LogError(e, "Background data sync failed");
+            Synced?.Invoke(new DataSyncResult(false, false, false, null,
+                $"Your to-do changes are saved on this computer but could not be synced: {e.Message}"));
         }
     }
 

@@ -56,6 +56,13 @@ public sealed class AppTools
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
     /// <summary>
+    /// The items this run was given to judge, with the message each verdict must be kept against.
+    /// A verdict for anything else is refused: text inside one email must not be able to make the
+    /// run clear other threads off the Email tab.
+    /// </summary>
+    private readonly Dictionary<(string Source, string Key), string> _issued = [];
+
+    /// <summary>
     /// Who answers permission prompts. Null for unattended runs (pulls, sends, the nightly jobs),
     /// where everything outside the allowlist is denied: a scheduled run must never widen itself.
     /// </summary>
@@ -102,6 +109,14 @@ public sealed class AppTools
     {
         var run = RequireRun();
         var items = run.TriageBatch();
+        lock (_issued)
+        {
+            foreach (var i in items)
+            {
+                _issued[(i.Source, i.Key)] = i.ForMessage;
+            }
+        }
+
         return JsonSerializer.Serialize(
             new
             {
@@ -138,11 +153,23 @@ public sealed class AppTools
                 continue;
             }
 
+            bool issued;
+            lock (_issued)
+            {
+                issued = _issued.TryGetValue((source, key), out var expected) && expected == forMessage;
+            }
+
+            if (!issued)
+            {
+                problems.Add(key);
+                continue;
+            }
+
             run.RecordVerdict(source, key, forMessage, nr.GetBoolean(), Str(v, "why") ?? "");
             saved++;
         }
 
-        return problems.Count == 0 ? $"Saved {saved}." : $"Saved {saved}. Not saved (missing source, key, for_message or needs_reply): {string.Join(", ", problems)}.";
+        return problems.Count == 0 ? $"Saved {saved}." : $"Saved {saved}. Not saved (not in a batch you were given, or missing source, key, for_message or needs_reply): {string.Join(", ", problems)}.";
     }
 
     private IRunContext RequireRun() =>

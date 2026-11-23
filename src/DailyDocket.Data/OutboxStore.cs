@@ -25,6 +25,50 @@ public sealed class OutboxStore : IOutboxStore
     {
         _db = db;
         _exportPath = exportPath;
+        Restored = RestoreFromExport();
+    }
+
+    /// <summary>How many unsent items came back from outbox.json when the database had none.</summary>
+    public int Restored { get; }
+
+    /// <summary>
+    /// A new or replaced database has an empty outbox while outbox.json still lists Mike's unsent
+    /// items (the database could not be read, or was deleted): bring them back. Anything that was
+    /// mid-send comes back held, never queued, so it cannot go twice.
+    /// </summary>
+    private int RestoreFromExport()
+    {
+        if (_exportPath is null || !File.Exists(_exportPath))
+        {
+            return 0;
+        }
+
+        using (var c = _db.Connect())
+        {
+            if (c.ExecuteScalar<long>("SELECT COUNT(*) FROM outbox_item") > 0)
+            {
+                return 0;
+            }
+        }
+
+        List<OutboxItem>? items;
+        try
+        {
+            items = JsonSerializer.Deserialize<List<OutboxItem>>(File.ReadAllText(_exportPath), Export);
+        }
+        catch (JsonException)
+        {
+            return 0; // An unreadable export is left as it is for Mike to look at.
+        }
+
+        foreach (var item in items ?? [])
+        {
+            Save(item.Status is OutboxStatus.Sending or OutboxStatus.Queued
+                ? item with { Status = OutboxStatus.Held, Problem = "Restored after DailyDocket's local database had to be rebuilt. Check the conversation, then send again or discard." }
+                : item);
+        }
+
+        return items?.Count ?? 0;
     }
 
     public void Save(OutboxItem item)

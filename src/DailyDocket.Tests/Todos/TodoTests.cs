@@ -200,14 +200,24 @@ public sealed class TodoTests : IDisposable
         repoA.LoadTodos().Select(t => t.Id).ShouldBe(["t1", "t2", "t3"], ignoreOrder: true);
 
         // The same task changed on both: the later push keeps its version on a set-aside branch.
+        // Only the conflicting task is set aside: the Surface's other offline changes stay on the list.
         repoA.Save(Task("t1") with { Title = "Pillar's title" });
         repoB.Save(Task("t1") with { Title = "Surface's title" });
+        repoB.Save(Task("t9") with { Title = "Added on the Surface offline" });
+        repoB.Delete("t3");
         (await a.SyncAsync("edit")).Ok.ShouldBeTrue();
         var result = await b.SyncAsync("edit");
 
         result.Ok.ShouldBeTrue();
         result.SetAside.ShouldNotBeNull().ShouldStartWith("set-aside/surface-");
-        repoB.LoadTodos().Single(t => t.Id == "t1").Title.ShouldBe("Pillar's title");
+        var onB = repoB.LoadTodos();
+        onB.Single(t => t.Id == "t1").Title.ShouldBe("Pillar's title");
+        onB.Select(t => t.Id).ShouldContain("t9");
+        onB.Select(t => t.Id).ShouldNotContain("t3");
+
+        // And those changes reached the remote.
+        (await a.SyncAsync("pull")).Ok.ShouldBeTrue();
+        repoA.LoadTodos().Select(t => t.Id).ShouldBe(["t1", "t2", "t9"], ignoreOrder: true);
     }
 
     [Fact]

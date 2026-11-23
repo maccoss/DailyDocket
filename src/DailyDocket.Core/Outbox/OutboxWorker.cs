@@ -140,9 +140,9 @@ public sealed class OutboxWorker
             return;
         }
 
-        var why = sent.Detail ?? sent.FinalText?.Trim() ?? "The send did not complete.";
-        Update(item with { Status = OutboxStatus.Failed, Problem = why.Length > 400 ? why[..400] : why });
-        _log.LogWarning("Outbox item {Id} failed", item.Id);
+        var (status, problem) = OutboxRules.AfterUnconfirmedSend(sent.Detail, sent.FinalText);
+        Update(item with { Status = status, Problem = problem });
+        _log.LogWarning("Outbox item {Id} not confirmed: {Status}", item.Id, status);
     }
 
     /// <summary>The response text of the first capture of <paramref name="tool"/> in a run's folder.</summary>

@@ -148,7 +148,17 @@ public sealed class JobRunner
         }
 
         // Whatever happened, keep what was captured: a run stopped halfway still fetched real data.
-        var captured = _store.IngestFolder(runId, captures);
+        var captured = 0;
+        try
+        {
+            captured = _store.IngestFolder(runId, captures);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // A problem saving the results fails this run, not the sync loop or the outbox worker.
+            _log.LogError(e, "Run {RunId}: saving its results failed", runId);
+            failure ??= $"The {plan.Job} sync fetched its results but could not save them: {e.Message} The next sync will try again.";
+        }
         if (failure is null)
         {
             foreach (var (key, value) in plan.Watermarks)

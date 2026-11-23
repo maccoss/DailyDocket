@@ -29,6 +29,21 @@ public sealed partial class ComposeViewModel : ObservableObject
         Kind = kind;
     }
 
+    /// <summary>
+    /// What the box holds right now, supplied by the view. Saving on a typing pause alone lost the
+    /// last second or so of typing when Mike switched threads or closed the app before it fired.
+    /// </summary>
+    public Func<ComposedText>? CurrentContent { get; set; }
+
+    /// <summary>Saves what is in the box now, if a draft is open: before switching away or closing.</summary>
+    public void SaveCurrent()
+    {
+        if (_item is not null && IsOpen && CurrentContent is { } current)
+        {
+            SaveDraft(current());
+        }
+    }
+
     /// <summary>Claude's draft, as light Markdown, for the view to put in the box.</summary>
     public event Action<string>? DraftReady;
 
@@ -107,6 +122,7 @@ public sealed partial class ComposeViewModel : ObservableObject
     /// <summary>Opens a new reply, or this conversation's existing draft if there is one.</summary>
     public void Open(string target, string? replyTo, string? channel, string subject, string baseMessage, IReadOnlyList<string> to, IReadOnlyList<string> cc, string heading, Func<string>? conversation = null)
     {
+        SaveCurrent();
         _conversation = conversation;
         Guidance = "";
         DraftWithClaudeCommand.NotifyCanExecuteChanged();
@@ -126,6 +142,7 @@ public sealed partial class ComposeViewModel : ObservableObject
     /// <summary>Reopens an outbox item (held, failed, or pulled back by Undo) for editing.</summary>
     public void Edit(OutboxItem item, Func<string>? conversation = null)
     {
+        SaveCurrent();
         _conversation = conversation;
         DraftWithClaudeCommand.NotifyCanExecuteChanged();
         _item = item with { Status = OutboxStatus.Draft, SendAfter = null, Problem = null };
@@ -189,6 +206,14 @@ public sealed partial class ComposeViewModel : ObservableObject
         // A typed but not yet added address still counts: people expect what they see in the box to be used.
         AddTo();
         AddCc();
+
+        // What is left in a box was not an address. Sending without that person, silently, would
+        // be worse than asking: the Note already says which text was not understood.
+        if (NewTo.Trim().Length > 0 || NewCc.Trim().Length > 0)
+        {
+            return false;
+        }
+
         if (content.IsEmpty)
         {
             Note = "Write something before sending.";
@@ -228,6 +253,7 @@ public sealed partial class ComposeViewModel : ObservableObject
     [RelayCommand]
     private void Close()
     {
+        SaveCurrent();
         _item = null;
         IsOpen = false;
     }

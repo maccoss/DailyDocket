@@ -36,6 +36,9 @@ public sealed class DocketDatabase
 
     public string Path { get; }
 
+    /// <summary>Where an unreadable database was moved on opening, or null when it opened normally.</summary>
+    public string? MovedAside { get; private set; }
+
     /// <summary>Opens the database, creating or migrating it as needed.</summary>
     public static DocketDatabase Open(string path, string key)
     {
@@ -47,10 +50,22 @@ public sealed class DocketDatabase
         }
         catch (SqliteException e) when (e.SqliteErrorCode == 26)
         {
-            // SQLITE_NOTADB: the file is not readable with this key (a new machine key, or a
-            // database from before encryption). It is only a cache, so start it again.
+            // SQLITE_NOTADB: the file is not readable with this key (a lost Credential Manager
+            // entry, a database from before encryption). The cache refills from a pull, but the
+            // outbox does not: the file is moved aside, never deleted, and the outbox comes back
+            // from outbox.json (OutboxStore).
             SqliteConnection.ClearAllPools();
-            File.Delete(path);
+            var aside = $"{path}.unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+            File.Move(path, aside);
+            foreach (var suffix in new[] { "-wal", "-shm" })
+            {
+                if (File.Exists(path + suffix))
+                {
+                    File.Move(path + suffix, aside + suffix);
+                }
+            }
+
+            db.MovedAside = aside;
             using var c = db.Connect();
             Migrations.Apply(c);
         }

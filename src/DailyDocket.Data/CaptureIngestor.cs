@@ -50,9 +50,9 @@ public sealed class CaptureIngestor
             {
                 call = CapturedCall.Parse(File.ReadAllText(file), new DateTimeOffset(File.GetLastWriteTimeUtc(file), TimeSpan.Zero));
             }
-            catch (JsonException)
+            catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or IOException)
             {
-                continue; // A file still being written; the next pass gets it.
+                continue; // A file still being written, or not a capture at all; skipped.
             }
 
             if (Ingest(runId, call))

@@ -115,6 +115,26 @@ public static partial class OutboxRules
             .Any(v => v > b);
     }
 
+    /// <summary>
+    /// What to make of a send run that left no record of the call's result. Only a refusal by the
+    /// guard proves nothing went out; anything else (Claude said it sent, the run ended oddly, the
+    /// capture hook timed out) may have delivered the message, so the item is held for Mike to check
+    /// rather than marked failed, where Send again would deliver it a second time.
+    /// </summary>
+    public static (OutboxStatus Status, string Problem) AfterUnconfirmedSend(string? runProblem, string? finalText)
+    {
+        var text = (finalText ?? "").Trim();
+        if (text.Contains("DailyDocket send guard", StringComparison.Ordinal))
+        {
+            var refused = text.Length > 400 ? text[..400] : text;
+            return (OutboxStatus.Failed, $"Not sent: the send was refused before it reached Gmail or Slack. {refused}");
+        }
+
+        return (OutboxStatus.Held,
+            "DailyDocket could not confirm whether this went out. Check the conversation (in Gmail or Slack, or after the next sync) before you send it again, so it does not go twice."
+            + (runProblem is { Length: > 0 } p ? $" ({p})" : ""));
+    }
+
     /// <summary>The sent message's id from the connector's answer: Gmail's message id, or Slack's ts or link.</summary>
     public static string? RemoteId(string response)
     {

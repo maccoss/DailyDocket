@@ -72,6 +72,6 @@ public static partial class DraftPlans
     public static string HouseStyle(string draft) =>
         EmDash().Replace(draft.Trim(), ", ").Replace(" ,", ",", StringComparison.Ordinal);
 
-    [GeneratedRegex(@"\s*—\s*")]
+    [GeneratedRegex("\\s*\u2014\\s*")]
     private static partial Regex EmDash();
 }

@@ -46,6 +46,7 @@ public sealed partial class SecretRedactingEnricher : ILogEventEnricher
         }
     }
 
-    [GeneratedRegex("password|secret|token|authorization|credential|key", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    // Not plain "key": thread and conversation keys are ordinary values worth seeing in a log.
+    [GeneratedRegex("password|secret|token|authorization|credential|apikey|api_key|databasekey", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SensitiveName();
 }

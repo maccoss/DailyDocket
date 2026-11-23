@@ -38,6 +38,7 @@ public partial class ComposeBox : UserControl
             {
                 _vm.LoadRequested += OnLoadRequested;
                 _vm.DraftReady += OnDraftReady;
+                _vm.CurrentContent = () => DocumentConverter.Convert(Editor.Document);
             }
         };
     }

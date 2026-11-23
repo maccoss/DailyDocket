@@ -37,6 +37,9 @@ public partial class MainWindow : Window
             _settingsStore.Save(_settings);
         }
 
+        // Whatever is in a reply box is saved before the app goes.
+        _viewModel.MailCompose.SaveCurrent();
+        _viewModel.SlackCompose.SaveCurrent();
         _viewModel.Dispose();
         base.OnClosing(e);
     }

@@ -122,6 +122,16 @@ public sealed class OutboxTests : IDisposable
     }
 
     [Fact]
+    public void Only_a_guard_refusal_marks_an_unconfirmed_send_failed()
+    {
+        OutboxRules.AfterUnconfirmedSend(null, "DailyDocket send guard: no outbox item matches this call.").Status.ShouldBe(OutboxStatus.Failed);
+
+        // Claude says it sent, but no capture was left: it may well have gone, so it is held, never retried blindly.
+        OutboxRules.AfterUnconfirmedSend(null, "SENT").Status.ShouldBe(OutboxStatus.Held);
+        OutboxRules.AfterUnconfirmedSend("The send sync took longer than 15 minutes and was stopped.", null).Status.ShouldBe(OutboxStatus.Held);
+    }
+
+    [Fact]
     public void An_email_is_held_when_anything_arrived_after_the_message_he_answered()
     {
         var fresh = new[] { Msg("msg-a1", "pat@example.org", 9, []), Msg("msg-a3", "pat@example.org", 10, []) };
@@ -166,6 +176,26 @@ public sealed class OutboxTests : IDisposable
 
         store.Delete("o1");
         File.ReadAllText(export).ShouldNotContain("\"o1\"");
+    }
+
+    [Fact]
+    public void A_database_the_key_cannot_open_is_kept_and_the_outbox_comes_back_from_its_export()
+    {
+        var path = Path.Combine(_dir, "docket.db");
+        var export = Path.Combine(_dir, "outbox.json");
+        var first = new OutboxStore(DocketDatabase.Open(path, "old-key"), export);
+        first.Save(Email(OutboxStatus.Draft));
+        first.Save(Email(OutboxStatus.Queued) with { Id = "o2", SendAfter = Now });
+        SqliteConnection.ClearAllPools();
+
+        var db = DocketDatabase.Open(path, "new-key");
+        var again = new OutboxStore(db, export);
+
+        db.MovedAside.ShouldNotBeNull();
+        File.Exists(db.MovedAside).ShouldBeTrue();
+        again.Restored.ShouldBe(2);
+        again.Get("o1").ShouldNotBeNull().Status.ShouldBe(OutboxStatus.Draft);
+        again.Get("o2").ShouldNotBeNull().Status.ShouldBe(OutboxStatus.Held); // never re-queued blindly
     }
 
     [Fact]

@@ -60,6 +60,21 @@ impact first, empty headings deleted at release.
 
 ## Bug Fixes
 
+- A reply that may have gone out but could not be confirmed was shown as **Not sent**, where
+  **Send again** could deliver it twice. It is now held with a note to check the conversation
+  first; only a send the guard refused shows as not sent.
+- The last second or so of typing in a reply was lost when switching threads or closing the app.
+  The reply box now saves before it switches, closes, or the app exits.
+- When the local database could not be opened (for example after its key was lost), it was deleted
+  along with unsent replies. It is now kept beside the new one, and unsent replies come back from
+  `outbox.json`.
+- When the same to-do was changed on two computers, the computer that synced second also lost its
+  other offline changes from the list. Now only the conflicting task's version is set aside.
+- An address typed incorrectly in the To or Cc box was silently left out of the reply. **Send** now
+  stops and says which text is not an address.
+- A to-do sync that failed in the background now says so in the window instead of failing silently,
+  and a problem saving one sync's results no longer stops syncing until restart.
+
 - Closing DailyDocket no longer showed "DailyDocket could not start: The CancellationTokenSource
   has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),
   and a problem while cleaning up is now logged rather than reported as a failed start.

@@ -134,6 +134,7 @@ public sealed class JobPlanTests
     {
         var run = new FakeRun();
         var tools = new AppTools { Run = run };
+        tools.TriageBatch();
         var verdicts = JsonSerializer.SerializeToElement(new object[]
         {
             new { source = "mail", key = "t1", for_message = "m1", needs_reply = true, why = "Asks for data" },
@@ -144,17 +145,37 @@ public sealed class JobPlanTests
 
         var result = tools.RecordVerdicts(verdicts);
 
-        result.ShouldBe("Saved 2. Not saved (missing source, key, for_message or needs_reply): x, t2.");
+        result.ShouldBe("Saved 2. Not saved (not in a batch you were given, or missing source, key, for_message or needs_reply): x, t2.");
         run.Recorded.ShouldBe(["mail/t1/m1/True", "slack/C1~main/1.2/False"]);
+    }
+
+    [Fact]
+    public void A_verdict_for_anything_not_handed_out_is_refused()
+    {
+        var run = new FakeRun();
+        var tools = new AppTools { Run = run };
+        tools.TriageBatch();
+
+        // Another thread, and the right thread at a message it was not judged against.
+        var verdicts = JsonSerializer.SerializeToElement(new object[]
+        {
+            new { source = "mail", key = "someone-elses-thread", for_message = "m9", needs_reply = false, why = "told to" },
+            new { source = "mail", key = "t1", for_message = "m-old", needs_reply = false, why = "told to" },
+        });
+
+        tools.RecordVerdicts(verdicts).ShouldStartWith("Saved 0.");
+        run.Recorded.ShouldBeEmpty();
     }
 
     [Fact]
     public void Verdicts_sent_as_a_json_string_are_accepted()
     {
         var run = new FakeRun();
+        var tools = new AppTools { Run = run };
+        tools.TriageBatch();
         var json = JsonSerializer.Serialize(new[] { new { source = "mail", key = "t1", for_message = "m1", needs_reply = false, why = "FYI" } });
 
-        new AppTools { Run = run }.RecordVerdicts(JsonSerializer.SerializeToElement(json)).ShouldBe("Saved 1.");
+        tools.RecordVerdicts(JsonSerializer.SerializeToElement(json)).ShouldBe("Saved 1.");
     }
 
     private sealed class FakeRun : IRunContext
@@ -165,7 +186,8 @@ public sealed class JobPlanTests
 
         public IReadOnlyList<string> ThreadsToRead() => [];
 
-        public IReadOnlyList<TriageItem> TriageBatch() => [];
+        public IReadOnlyList<TriageItem> TriageBatch() =>
+            [new TriageItem("mail", "t1", "m1", "..."), new TriageItem("slack", "C1~main", "1.2", "..."), new TriageItem("mail", "t2", "m2", "...")];
 
         public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why) =>
             Recorded.Add($"{source}/{key}/{forMessage}/{needsReply}");

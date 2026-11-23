@@ -107,8 +107,8 @@ public sealed class DataSync
                 await _git.RunAsync(["rebase", "--abort"], cancellationToken).ConfigureAwait(false);
                 setAside = $"set-aside/{_machine}-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}";
                 await _git.RequireAsync(["branch", setAside], cancellationToken).ConfigureAwait(false);
-                await _git.RequireAsync(["reset", "--hard", "origin/main"], cancellationToken).ConfigureAwait(false);
-                _log.LogWarning("Data sync conflict; this machine's version kept on {Branch}", setAside);
+                var kept = await KeepNonConflictingAsync(setAside, cancellationToken).ConfigureAwait(false);
+                _log.LogWarning("Data sync conflict; this machine's version of the conflicting files kept on {Branch}, {Kept} other changes replayed", setAside, kept);
             }
 
             var push = await _git.RunAsync(["push", "origin", "HEAD:main"], cancellationToken).ConfigureAwait(false);
@@ -128,6 +128,46 @@ public sealed class DataSync
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// After a conflict: main takes the remote's version, then every file this machine changed that
+    /// the remote did not touch is put back, so only the files changed on both sides are set aside.
+    /// Taking the remote wholesale would drop unrelated tasks added here offline from the list.
+    /// </summary>
+    private async Task<int> KeepNonConflictingAsync(string setAside, CancellationToken cancellationToken)
+    {
+        var mergeBase = (await _git.RequireAsync(["merge-base", setAside, "origin/main"], cancellationToken).ConfigureAwait(false)).Trim();
+        var remote = (await _git.RequireAsync(["diff", "--name-only", mergeBase, "origin/main"], cancellationToken).ConfigureAwait(false))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
+        var local = (await _git.RequireAsync(["diff", "--name-status", "--no-renames", mergeBase, setAside], cancellationToken).ConfigureAwait(false))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split('\t'))
+            .Where(parts => parts.Length == 2)
+            .Select(parts => (Status: parts[0].Trim(), File: parts[1].Trim()))
+            .Where(c => !remote.Contains(c.File))
+            .ToList();
+
+        await _git.RequireAsync(["reset", "--hard", "origin/main"], cancellationToken).ConfigureAwait(false);
+        foreach (var (status, file) in local)
+        {
+            if (status.StartsWith('D'))
+            {
+                await _git.RequireAsync(["rm", "-q", "--ignore-unmatch", "--", file], cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _git.RequireAsync(["checkout", setAside, "--", file], cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (local.Count > 0)
+        {
+            await CommitAsync($"Keep this computer's other changes beside a conflict ({setAside})", cancellationToken).ConfigureAwait(false);
+        }
+
+        return local.Count;
     }
 
     private async Task<bool> CommitAsync(string summary, CancellationToken cancellationToken)
