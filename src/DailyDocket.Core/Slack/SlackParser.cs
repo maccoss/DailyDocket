@@ -36,6 +36,7 @@ public static partial class SlackParser
     public static (IReadOnlyList<SlackMessage> Messages, string? Cursor) ParseSearch(string responseText)
     {
         var (report, pagination) = Unwrap(responseText);
+        report = report.Replace("\r\n", "\n", StringComparison.Ordinal);
         var messages = new List<SlackMessage>();
         foreach (var block in ResultHeader().Split(report).Skip(1))
         {
