@@ -44,6 +44,12 @@ public sealed class AppSettings
     /// <summary>Use the beta update channel (for trying a release before everyone gets it).</summary>
     public bool BetaUpdates { get; set; }
 
+    /// <summary>A Windows notification when something new needs Mike: an owed email or Slack conversation, or a held or failed reply.</summary>
+    public bool Notifications { get; set; } = true;
+
+    /// <summary>Minimizing hides the window to the notification area, where DailyDocket keeps syncing.</summary>
+    public bool MinimizeToTray { get; set; } = true;
+
     public double? WindowWidth { get; set; }
 
     public double? WindowHeight { get; set; }

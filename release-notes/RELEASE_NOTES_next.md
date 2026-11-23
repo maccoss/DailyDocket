@@ -82,6 +82,12 @@ impact first, empty headings deleted at release.
 - **Old unanswered mail surfaced.** Each night the designated computer also read the inbox older
   than the 30-day window, back 90 days (`mail.deepDays`), and Claude judged what it found, so old
   threads still waiting on a reply appeared on the Email tab.
+- **Notification area and notifications.** Minimizing put DailyDocket in the notification area
+  (`"MinimizeToTray"`), where it kept syncing; clicking the icon brought it back. A Windows
+  notification said when something new needed Mike after a sync: an email or Slack conversation
+  newly waiting on a reply, or a reply that was held or not sent. Clicking it opened the window on
+  that tab and conversation. Notifications could be turned off from the icon's menu
+  (`"Notifications"`).
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
   SQLCipher, with its key kept in Windows Credential Manager.
 

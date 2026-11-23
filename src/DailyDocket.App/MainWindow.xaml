@@ -42,7 +42,7 @@
             <TextBlock Text="{Binding Banner}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" />
         </Border>
 
-        <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0">
+        <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0" SelectedIndex="{Binding SelectedTab}">
             <TabItem Header="SCHEDULE">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ScheduleSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />

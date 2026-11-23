@@ -22,7 +22,8 @@ calendars:
 
 mail:
   windowDays: 30
-  systemSenders:                       # added to the generic machine senders
+  deepDays: 90                         # the nightly deep sweep reads the inbox back this far
+  systemSenders:                      # added to the generic machine senders
     - alerts@example.com
     - "@newsletter.example.com"
 

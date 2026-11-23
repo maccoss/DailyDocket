@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- For the notification-area icon (NotifyIcon) only; see Services/TrayIcon.cs. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>DailyDocket.App</RootNamespace>
     <AssemblyName>DailyDocket</AssemblyName>
 
@@ -27,6 +29,12 @@
   <ItemGroup>
     <!-- UseWPF drops System.IO from the implicit usings (Path collides with Shapes.Path); this app draws no shapes. -->
     <Using Include="System.IO" />
+    <!--
+      UseWindowsForms adds these to the implicit usings; their Application, MessageBox, Button and
+      Color collide with WPF's. Only TrayIcon uses Windows Forms, by an alias.
+    -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>

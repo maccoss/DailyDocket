@@ -23,10 +23,19 @@ public sealed partial class MainViewModel
 
         // Verdicts another machine shared can take threads off the Email and Slack tabs.
         _shared.CacheChanged += () => OnUi(Reload);
+
+        // After a sync's results are on the tabs (queued after the reload above it), and whenever
+        // an outbox item changes: anything new that needs Mike becomes a notification.
+        _scheduler.Finished += _ => OnUi(CheckNotices);
+        _worker.Changed += _ => OnUi(CheckNotices);
     }
 
-    /// <summary>Starts the nightly schedule, once the configuration is complete.</summary>
-    private void StartShared() => _shared.Start(_stop.Token);
+    /// <summary>Starts the nightly schedule, once the configuration is complete, and takes the notifications' baseline.</summary>
+    private void StartShared()
+    {
+        CheckNotices();
+        _shared.Start(_stop.Token);
+    }
 
     /// <summary>Every brief for the days the Schedule shows, by event id; read from disk, so offline too.</summary>
     private IReadOnlyDictionary<string, MeetingBrief> LoadBriefs(DateOnly today, int days)
