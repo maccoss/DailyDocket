@@ -164,9 +164,11 @@ public sealed class VerdictTests : IDisposable
     [Fact]
     public void The_deep_sweep_reads_older_inbox_mail_only_and_records_its_start()
     {
-        var plan = JobPlans.DeepSweepRun(Fixture.Config(), Now, "haiku");
+        var plan = JobPlans.DeepSweepRun(Fixture.Config(), Now, Fixture.Pacific, "haiku");
 
-        plan.Prompt.ShouldContain("older_than:30d newer_than:90d");
+        // One search per day from 31 to 90 days back. The test's Now is set in this file.
+        var days = System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count;
+        days.ShouldBe(60);
         plan.Prompt.ShouldContain("THREAD_VIEW_SUMMARY");
         plan.AllowedTools.ShouldNotContain(t => ConnectorTools.Writes.Contains(t));
         ConnectorTools.Writes.ShouldAllBe(w => plan.DisallowedTools.Contains(w));

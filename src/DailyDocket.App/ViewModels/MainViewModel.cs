@@ -71,6 +71,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 QueueMarkRead(changed.Target, DateTimeOffset.UtcNow);
             }
 
+            // Answered: off the tab now, on every computer, not after the next pull reads it back.
+            if (OutboxRules.HandledBySend(changed, id => _store.ThreadMessages(changed.Target).FirstOrDefault(m => m.Id == id)?.Date) is { } handled)
+            {
+                _book.MarkHandled(handled.Kind, handled.Key, handled.UpTo);
+            }
+
             ReloadOutbox();
             Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
         });
@@ -829,6 +835,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             pending.TryGetValue(e.EventId, out var p) && p.Status != OutboxStatus.Sent ? $"{p.Text} (sending)"
             : pending.TryGetValue(e.EventId, out var sent) && (e.Updated is null || sent.Updated > e.Updated) ? sent.Text
             : e.MyResponse is "needsAction" ? null : e.MyResponse;
+        var open = Days.SelectMany(d => d.Events).Where(e => e.BriefOpen).Select(e => e.EventId).ToHashSet();
         var days = _store.Schedule(config, now, zone).Select(d => new DayItem(
             d.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             d.Date.ToString("dddd", CultureInfo.InvariantCulture) + (d.Date == today ? " · today" : ""),
@@ -841,7 +848,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 s.Calendar.Tag,
                 s.Event.Location,
                 s.Clash,
-                s.Unanswered,
+                // Answered in the app counts at once, not only after the next calendar pull reads it back.
+                s.Unanswered && Response(s.Event) is null,
                 !s.Calendar.Primary,
                 s.Event.HtmlLink,
                 s.Event.EventId,
@@ -850,7 +858,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 Response(s.Event),
                 BriefFor(briefs, s.Event),
                 _prepping.Contains(s.Event.EventId),
-                _prepNotes.GetValueOrDefault(s.Event.EventId)))])).ToList();
+                _prepNotes.GetValueOrDefault(s.Event.EventId),
+                s.Event.JoinLink)
+            { BriefOpen = open.Contains(s.Event.EventId) })])).ToList();
         Swap(Days, days, d => d);
         var meetings = days.Sum(d => d.Events.Count);
         ScheduleSummary = days.Count == 0 ? "Nothing on the calendar for the next week." : $"{meetings} meetings over the next {config.Schedule.Days} days";

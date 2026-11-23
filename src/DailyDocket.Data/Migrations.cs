@@ -11,7 +11,13 @@ namespace DailyDocket.Data;
 /// </remarks>
 internal static class Migrations
 {
-    public const int Current = 3;
+    public const int Current = 4;
+
+    /// <summary>
+    /// Version 4: the meeting's join link (Zoom, Teams, Meet, Webex). Existing rows get null until
+    /// the next pull rewrites them.
+    /// </summary>
+    private const string JoinLinkStep = "ALTER TABLE calendar_event ADD COLUMN join_link TEXT;";
 
     /// <summary>
     /// Version 3: the hash of what a meeting brief depends on. Existing rows get null (a brief is
@@ -69,6 +75,7 @@ internal static class Migrations
             event_type   TEXT,
             updated_utc  TEXT,
             content_hash TEXT,
+            join_link    TEXT,
             PRIMARY KEY (calendar_key, event_id)
         );
         CREATE INDEX calendar_event_start ON calendar_event (start_utc);
@@ -189,7 +196,7 @@ internal static class Migrations
         }
 
         using var tx = c.BeginTransaction();
-        if (version is 1 or 2)
+        if (version is 1 or 2 or 3)
         {
             // The cache stays; each step adds what its version brought.
             if (version == 1)
@@ -197,9 +204,15 @@ internal static class Migrations
                 c.Execute(OutboxSchema, transaction: tx);
             }
 
-            if (!c.Query<string>("SELECT name FROM pragma_table_info('calendar_event');", transaction: tx).Contains("content_hash"))
+            var columns = c.Query<string>("SELECT name FROM pragma_table_info('calendar_event');", transaction: tx).ToList();
+            if (!columns.Contains("content_hash"))
             {
                 c.Execute(EventHashStep, transaction: tx);
+            }
+
+            if (!columns.Contains("join_link"))
+            {
+                c.Execute(JoinLinkStep, transaction: tx);
             }
 
             c.Execute($"PRAGMA user_version = {Current};", transaction: tx);

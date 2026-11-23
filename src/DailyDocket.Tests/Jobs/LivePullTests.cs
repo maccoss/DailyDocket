@@ -40,7 +40,7 @@ public sealed class LivePullTests(ITestOutputHelper output)
 
         var outcomes = await Task.WhenAll(
             runner.RunAsync(JobPlans.CalendarPull(config, now, zone, "haiku")),
-            runner.RunAsync(JobPlans.MailPull(config, now, null, "haiku")),
+            runner.RunAsync(JobPlans.MailPull(config, now, zone, null, "haiku")),
             runner.RunAsync(JobPlans.SlackPull(config, now, zone, null, "haiku")));
         // One conversation per run: a few runs show the per-conversation cost without judging them all.
         var triage = await JobPlans.TriageAllAsync(jobs, plan => runner.RunAsync(plan), "sonnet", 5);

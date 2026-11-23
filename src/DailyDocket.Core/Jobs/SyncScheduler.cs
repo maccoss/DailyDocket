@@ -121,7 +121,7 @@ public sealed class SyncScheduler : IDisposable
 
         var pulls = await Task.WhenAll(
             Run(JobPlans.CalendarPull(config, now, zone, settings.PullModel)),
-            Run(JobPlans.MailPull(config, now, _store.Watermark("mail", "full"), settings.PullModel)),
+            Run(JobPlans.MailPull(config, now, zone, _store.Watermark("mail", "full"), settings.PullModel)),
             Run(JobPlans.SlackPull(config, now, zone, _store.Watermark("slack", "full"), settings.PullModel))).ConfigureAwait(false);
 
         var outcomes = pulls.ToList();

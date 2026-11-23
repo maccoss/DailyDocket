@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using DailyDocket.Core.Mail;
 
 namespace DailyDocket.Core.Calendar;
@@ -9,6 +10,7 @@ namespace DailyDocket.Core.Calendar;
 /// A hash of what a meeting brief depends on (start, end, title, description, location and the
 /// invited addresses); null for rows cached before it existed. See <see cref="CalendarParser.ContentHash"/>.
 /// </param>
+/// <param name="JoinLink">The meeting's Zoom, Teams, Meet or Webex link, when it has one. See <see cref="CalendarParser.JoinLink"/>.</param>
 public sealed record CalendarEvent(
     string EventId,
     string CalendarKey,
@@ -23,7 +25,8 @@ public sealed record CalendarEvent(
     string Status,
     string? EventType,
     DateTimeOffset? Updated,
-    string? ContentHash = null);
+    string? ContentHash = null,
+    string? JoinLink = null);
 
 /// <summary>Turns Calendar <c>list_events</c> results into records.</summary>
 public static class CalendarParser
@@ -109,7 +112,76 @@ public static class CalendarParser
             GmailParser.Str(ev, "status") ?? "confirmed",
             GmailParser.Str(ev, "eventType"),
             DateTimeOffset.TryParse(GmailParser.Str(ev, "updated"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var u) ? u : null,
-            ContentHash(startAt.Value, endValue, title, GmailParser.Str(ev, "description") ?? "", location, emails));
+            ContentHash(startAt.Value, endValue, title, GmailParser.Str(ev, "description") ?? "", location, emails),
+            JoinLink(ev));
+    }
+
+    // Video meeting hosts only: the link becomes a Join button, and the location and description
+    // are written by whoever sent the invitation, so an arbitrary site there must not get one.
+    // Zoom gives some organizations zoom.com addresses (the JPR check-in's), not only zoom.us.
+    private static readonly string[] MeetingHosts = ["zoom.us", "zoom.com", "zoomgov.com", "teams.microsoft.com", "teams.live.com", "meet.google.com", "webex.com"];
+
+    private static readonly Regex Url = new(@"https://[^\s""'<>()\[\]{}|\\^`]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The meeting's join link: Google's own conference link first (often empty: invitations from
+    /// Outlook and Zoom put the link in the text), then the first Zoom, Teams, Meet or Webex link in
+    /// the location, then in the description. Only the link is kept, never the description.
+    /// </summary>
+    public static string? JoinLink(JsonElement ev)
+    {
+        if (ev.TryGetProperty("conferenceData", out var conference) && conference.ValueKind == JsonValueKind.Object
+            && conference.TryGetProperty("entryPoints", out var points) && points.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var p in points.EnumerateArray())
+            {
+                if (GmailParser.Str(p, "entryPointType") == "video" && MeetingLink(GmailParser.Str(p, "uri")) is { } video)
+                {
+                    return video;
+                }
+            }
+        }
+
+        foreach (var field in new[] { "hangoutLink", "location", "description" })
+        {
+            var text = GmailParser.Str(ev, field) ?? "";
+            foreach (Match m in Url.Matches(text))
+            {
+                if (MeetingLink(m.Value) is { } link)
+                {
+                    return link;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The link, cleaned, when it is https on a video meeting host; otherwise null.</summary>
+    internal static string? MeetingLink(string? candidate)
+    {
+        if (string.IsNullOrEmpty(candidate))
+        {
+            return null;
+        }
+
+        // Descriptions are often HTML (href="...&amp;...") and sentences end in punctuation.
+        var text = System.Net.WebUtility.HtmlDecode(candidate).TrimEnd('.', ',', ';', ':', '!', '?', '*', '>');
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return null;
+        }
+
+        var host = uri.IdnHost.ToLowerInvariant();
+
+        // Phone pages that sit beside the join link in an invitation: Teams' dial-in numbers and
+        // Zoom's "find your local number" (/u/...).
+        if (host.StartsWith("dialin.", StringComparison.Ordinal) || uri.AbsolutePath.StartsWith("/u/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return MeetingHosts.Any(h => host == h || host.EndsWith("." + h, StringComparison.Ordinal)) ? uri.AbsoluteUri : null;
     }
 
     /// <summary>

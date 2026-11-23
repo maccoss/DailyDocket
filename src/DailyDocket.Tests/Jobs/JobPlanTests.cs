@@ -15,7 +15,7 @@ public sealed class JobPlanTests
     private static IEnumerable<JobPlan> AllPlans() =>
     [
         JobPlans.CalendarPull(Fixture.Config(), Now, Fixture.Pacific, "haiku"),
-        JobPlans.MailPull(Fixture.Config(), Now, null, "haiku"),
+        JobPlans.MailPull(Fixture.Config(), Now, Fixture.Pacific, null, "haiku"),
         JobPlans.SlackPull(Fixture.Config(), Now, Fixture.Pacific, null, "haiku"),
         JobPlans.TriageRun("sonnet"),
     ];
@@ -52,10 +52,17 @@ public sealed class JobPlanTests
     [Fact]
     public void The_first_mail_pull_sweeps_the_window_and_records_it()
     {
-        var plan = JobPlans.MailPull(Fixture.Config(), Now, null, "haiku");
+        var plan = JobPlans.MailPull(Fixture.Config(), Now, Fixture.Pacific, null, "haiku");
 
-        plan.Prompt.ShouldContain("newer_than:30d");
+        // Gmail returns at most 50 threads a search and no next page, so the window is searched a
+        // day at a time: today (Nov 22 in Pacific time) back to 30 days before, 31 searches.
+        plan.Prompt.ShouldContain("after:2026/11/22 before:2026/11/23");
+        plan.Prompt.ShouldContain("after:2026/10/23 before:2026/10/24");
+        plan.Prompt.ShouldNotContain("after:2026/10/22 ");
+        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(31);
+        plan.Prompt.ShouldNotContain("newer_than");
         plan.Prompt.ShouldContain("THREAD_VIEW_SUMMARY");
+        plan.Prompt.ShouldContain($"at most {JobPlans.ReadRounds} times");
         plan.Prompt.ShouldContain(AppTools.ThreadsToReadToolName);
         plan.Watermarks.ShouldContainKey("mail/full");
     }
@@ -63,10 +70,48 @@ public sealed class JobPlanTests
     [Fact]
     public void A_mail_pull_soon_after_a_full_sweep_looks_back_two_days()
     {
-        var plan = JobPlans.MailPull(Fixture.Config(), Now, Now.AddHours(-1).ToString("O"), "haiku");
+        var plan = JobPlans.MailPull(Fixture.Config(), Now, Fixture.Pacific, Now.AddHours(-1).ToString("O"), "haiku");
 
-        plan.Prompt.ShouldContain("newer_than:2d");
+        plan.Prompt.ShouldContain("after:2026/11/20 before:2026/11/21");
+        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(3);
         plan.Watermarks.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_day_is_midnight_to_midnight_in_his_time_zone()
+    {
+        // 07:30 UTC on Nov 23 is still Nov 22 in Pacific time.
+        var searches = JobPlans.DaySearches(new DateTimeOffset(2026, 11, 23, 7, 30, 0, TimeSpan.Zero), Fixture.Pacific, 1, 0);
+
+        searches.Count.ShouldBe(2);
+        searches[0].ShouldContain("after:2026/11/22 before:2026/11/23");
+        searches[1].ShouldContain("after:2026/11/21 before:2026/11/22");
+        searches[0].ShouldContain("\"pageSize\":50");
+    }
+
+    [Fact]
+    public void A_search_that_came_back_full_is_reported_by_its_query()
+    {
+        var folder = Directory.CreateTempSubdirectory("dd-full-").FullName;
+        try
+        {
+            string Capture(string query, int threads) => JsonSerializer.Serialize(new
+            {
+                tool_name = ConnectorTools.SearchThreads,
+                tool_input = new { query },
+                tool_response = JsonSerializer.Serialize(new { threads = Enumerable.Range(0, threads).Select(i => new { id = $"t{i}", messages = new[] { new { id = $"m{i}" } } }) }),
+                tool_use_id = $"toolu_{query.Length}_{threads}",
+            });
+            File.WriteAllText(Path.Combine(folder, "a.json"), Capture("in:inbox after:2026/11/19 before:2026/11/20", 50));
+            File.WriteAllText(Path.Combine(folder, "b.json"), Capture("in:inbox after:2026/11/18 before:2026/11/19", 19));
+            File.WriteAllText(Path.Combine(folder, "c.json"), "not a capture");
+
+            JobRunner.FullSearches(folder).ShouldBe(["in:inbox after:2026/11/19 before:2026/11/20"]);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 
     [Fact]

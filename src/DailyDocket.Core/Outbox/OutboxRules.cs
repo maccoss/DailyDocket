@@ -223,4 +223,30 @@ public static partial class OutboxRules
 
     [GeneratedRegex(@"https://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Z0-9]+/p\d+\S*")]
     private static partial Regex SlackLink();
+
+    /// <summary>
+    /// The Handled mark a sent reply stands for: its conversation up to the newest message when he
+    /// started writing (the item's base). Null for anything else, or an email whose base message
+    /// is not in the cache.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a conversation he had just answered stayed on the tab until the next pull read
+    /// his reply back (up to 15 minutes, and on each other computer until its own pull). As a
+    /// Handled mark it is shared through git, and it lapses when someone writes again.
+    /// </remarks>
+    /// <param name="messageTime">The time of an email message by id, from the cache.</param>
+    public static (string Kind, string Key, string UpTo)? HandledBySend(OutboxItem item, Func<string, DateTimeOffset?> messageTime)
+    {
+        if (item.Status != OutboxStatus.Sent || item.Base.Length == 0)
+        {
+            return null;
+        }
+
+        return item.Kind switch
+        {
+            OutboxKind.SlackReply => ("slack", item.Target, item.Base),
+            OutboxKind.EmailReply when messageTime(item.Base) is { } at => ("email", item.Target, at.ToString("O", System.Globalization.CultureInfo.InvariantCulture)),
+            _ => null,
+        };
+    }
 }

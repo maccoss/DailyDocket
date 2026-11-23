@@ -186,9 +186,47 @@ public sealed class JobRunner
             }
         }
 
+        foreach (var query in FullSearches(captures))
+        {
+            _log.LogWarning("Run {RunId}: a Gmail search returned {Count} threads, the most it returns, so some mail may be missing: {Query}", runId, JobPlans.SearchPageSize, query);
+        }
+
         _store.FinishRun(runId, sessionId, failure is null ? "ok" : "failed", failure, cost is null ? null : (double)cost);
         _log.LogInformation("Run {RunId} finished: {Outcome}, {Captured} captures", runId, failure is null ? "ok" : "failed", captured);
         return new JobOutcome(plan.Job, failure is null, failure, captured, cost) { FinalText = finalText, CaptureFolder = captures, CallLetThrough = Directory.EnumerateFiles(runDir, "claims.json.used.*").Any() };
+    }
+
+    /// <summary>
+    /// The queries of the Gmail searches in <paramref name="folder"/> that came back full: Gmail
+    /// gives no next page, so threads beyond them were not seen (see <see cref="JobPlans.SearchPageSize"/>).
+    /// Only the query is returned (labels and dates), never a subject.
+    /// </summary>
+    internal static IReadOnlyList<string> FullSearches(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return [];
+        }
+
+        var full = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                var call = Capture.CapturedCall.Parse(File.ReadAllText(file), DateTimeOffset.UtcNow);
+                if (call.ToolName == ConnectorTools.SearchThreads
+                    && Mail.GmailParser.ParseSearch(call.ResponseText).Threads.Count >= JobPlans.SearchPageSize)
+                {
+                    full.Add(call.InputString("query") ?? "");
+                }
+            }
+            catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or IOException)
+            {
+                // Not a capture, or not a search result; nothing to say about it.
+            }
+        }
+
+        return full;
     }
 
     /// <summary>How long a run folder is kept: long enough for its caller to read the captures.</summary>

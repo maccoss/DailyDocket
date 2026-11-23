@@ -23,6 +23,46 @@ public sealed class CalendarTests
         lab.Start.ShouldBe(new DateTimeOffset(2026, 11, 23, 10, 0, 0, TimeSpan.FromHours(-8)));
     }
 
+    private static string? Join(string eventJson)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(eventJson);
+        return CalendarParser.JoinLink(doc.RootElement);
+    }
+
+    [Fact]
+    public void The_join_link_comes_from_the_conference_then_the_location_then_the_description()
+    {
+        Join("""{"conferenceData":{"entryPoints":[{"entryPointType":"phone","uri":"tel:+1-555-0100"},{"entryPointType":"video","uri":"https://meet.google.com/abc-defg-hij"}]},"location":"https://example.zoom.us/j/1"}""")
+            .ShouldBe("https://meet.google.com/abc-defg-hij");
+        // An empty conferenceData (what Outlook and Zoom invitations carry) falls through to the text.
+        Join("""{"conferenceData":{},"location":"Room 101, https://example.zoom.us/j/123456789?pwd=abc.","description":"https://teams.microsoft.com/l/meetup-join/x"}""")
+            .ShouldBe("https://example.zoom.us/j/123456789?pwd=abc");
+        Join("""{"description":"Join: <a href=\"https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d&amp;btype=a\">Click here</a>"}""")
+            .ShouldBe("https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d&btype=a");
+    }
+
+    [Fact]
+    public void Only_https_video_meeting_hosts_become_a_join_link()
+    {
+        // The invitation's text is written by whoever sent it: another site must not get a Join button.
+        Join("""{"description":"Agenda at https://docs.example.org/agenda and http://example.zoom.us/j/1"}""").ShouldBeNull();
+        Join("""{"location":"https://zoom.us.evil.example/j/1"}""").ShouldBeNull();
+        Join("""{"location":"Conference room B"}""").ShouldBeNull();
+        Join("""{"description":"https://evilzoom.us/j/1 then https://washington.zoom.us/j/2"}""").ShouldBe("https://washington.zoom.us/j/2");
+        // Dial-in pages are skipped for the meeting link itself.
+        Join("""{"description":"Numbers: https://dialin.teams.microsoft.com/x?id=1 Join: https://teams.microsoft.com/l/meetup-join/y"}""")
+            .ShouldBe("https://teams.microsoft.com/l/meetup-join/y");
+        Join("""{"description":"Local number: https://example.zoom.us/u/abc Join: https://example.zoom.us/j/9"}""").ShouldBe("https://example.zoom.us/j/9");
+    }
+
+    [Fact]
+    public void A_zoom_com_link_is_a_join_link()
+    {
+        // Zoom gives some organizations zoom.com addresses rather than zoom.us.
+        Join("""{"description":"Join Zoom Meeting\nhttps://example-society.zoom.com/j/123456789?pwd=abc\n\nMeeting ID: 123"}""")
+            .ShouldBe("https://example-society.zoom.com/j/123456789?pwd=abc");
+    }
+
     [Fact]
     public void An_all_day_event_starts_at_midnight_in_the_calendars_zone()
     {

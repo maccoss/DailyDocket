@@ -217,17 +217,6 @@ jobs:
           pattern: releases-*
           path: artifacts
 
-      # Only this version's files: the delta bases downloaded for packing are last release's.
-      - name: Checksums
-        shell: pwsh
-        run: |
-          Get-ChildItem artifacts/releases-*/* -File |
-            Where-Object { $_.Extension -ne '.nupkg' -or $_.Name -like "*-$env:VERSION-*" } |
-            Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
-            Set-Content artifacts/SHA256SUMS.txt
-          Get-Content artifacts/SHA256SUMS.txt
-
       # One runtime after the other, each into the same Release (--merge).
       - name: Upload to GitHub Releases
         shell: pwsh
@@ -250,9 +239,23 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Uploading $rid failed" }
           }
 
+      # After the upload, over exactly the files the Release holds: vpk leaves files beside the
+      # packages that it does not upload (assets.*.json, RELEASES-*), and 26.1.0's list named them.
       - name: Attach checksums and set the release description
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v${{ env.VERSION }} artifacts/SHA256SUMS.txt --clobber
-          gh release edit v${{ env.VERSION }} --notes-file ${{ needs.meta.outputs.notes }}
+          $published = gh release view "v$env:VERSION" --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { throw "Reading the Release's files failed" }
+          Get-ChildItem artifacts/releases-*/* -File |
+            Where-Object { $published -contains $_.Name } |
+            Sort-Object Name |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content artifacts/SHA256SUMS.txt
+          Get-Content artifacts/SHA256SUMS.txt
+          gh release upload "v$env:VERSION" artifacts/SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Uploading SHA256SUMS.txt failed" }
+          gh release edit "v$env:VERSION" --notes-file "${{ needs.meta.outputs.notes }}"
+          if ($LASTEXITCODE -ne 0) { throw "Setting the release description failed" }

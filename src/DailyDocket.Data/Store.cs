@@ -56,7 +56,8 @@ public sealed class Store
                     (string)r.status,
                     (string?)r.event_type,
                     DocketDatabase.FromIso((string?)r.updated_utc),
-                    (string?)r.content_hash)),
+                    (string?)r.content_hash,
+                    (string?)r.join_link)),
         ];
     }
 
@@ -297,7 +298,7 @@ public sealed class Store
                 state = "Reading";
             }
 
-            var where = last.IsDm ? SlackRules.Others(last, config.Owner.Name) : last.ChannelLabel;
+            var where = SlackRules.Where(last, config.Owner.Name);
             var link = conv.Messages.LastOrDefault(m => m.Permalink is not null)?.Permalink;
             rows.Add(new SlackRow(conv.Key, state, last.FromName, where, last.IsDm, last.Text, last.When, why, link, last.Ts));
         }
@@ -320,7 +321,7 @@ public sealed class Store
                     "slack",
                     c.Key,
                     c.Last.Ts,
-                    SlackRules.TriageTranscript(c, me, c.Last.IsDm ? SlackRules.Others(c.Last, config.Owner.Name) : c.Last.ChannelLabel))),
+                    SlackRules.TriageTranscript(c, me, SlackRules.Where(c.Last, config.Owner.Name)))),
         ];
     }
 

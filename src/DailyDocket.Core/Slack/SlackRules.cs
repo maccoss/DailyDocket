@@ -81,6 +81,19 @@ public static partial class SlackRules
         return joined.Length > 0 ? joined : "direct message";
     }
 
+    /// <summary>
+    /// Where a conversation is, as the Slack tab and triage show it: the other person's name for a
+    /// DM, "Group DM · " and the others' names for a group DM, the channel's name otherwise.
+    /// </summary>
+    /// <remarks>
+    /// A group DM has no name of its own in Slack's search results ("Group DM"), so the label alone
+    /// did not say which one to open; Slack lists it under its members' names.
+    /// </remarks>
+    public static string Where(SlackMessage last, string ownerName) =>
+        last.IsDm ? Others(last, ownerName)
+        : last.ChannelLabel.Equals("Group DM", StringComparison.OrdinalIgnoreCase) && last.Participants.Length > 0 ? $"Group DM · {Others(last, ownerName)}"
+        : last.ChannelLabel;
+
     /// <summary>What the triage model reads: the last few messages, each capped.</summary>
     public static string TriageTranscript(SlackConversation conversation, string myUserId, string where)
     {

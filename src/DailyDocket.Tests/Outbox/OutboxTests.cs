@@ -27,6 +27,24 @@ public sealed class OutboxTests : IDisposable
         "<FlowDocument/>", "<p>Thanks, <b>Friday</b> works.</p>", "Thanks, Friday works.", Now, Now, null, null, "skiddaw", 0, null, null);
 
     [Fact]
+    public void A_sent_reply_marks_its_conversation_handled_up_to_what_it_answered()
+    {
+        var at = new DateTimeOffset(2026, 11, 20, 17, 0, 0, TimeSpan.Zero);
+        DateTimeOffset? Time(string id) => id == "msg-a3" ? at : null;
+
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent), Time).ShouldBe(("email", "thread-a", at.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+        var slack = Email(OutboxStatus.Sent) with { Kind = OutboxKind.SlackReply, Target = "D027N01NGBD~main", Base = "1794514266.666729" };
+        OutboxRules.HandledBySend(slack, Time).ShouldBe(("slack", "D027N01NGBD~main", "1794514266.666729"));
+
+        // Not yet sent, held, or not a reply: nothing is marked.
+        OutboxRules.HandledBySend(Email(OutboxStatus.Queued), Time).ShouldBeNull();
+        OutboxRules.HandledBySend(slack with { Status = OutboxStatus.Held }, Time).ShouldBeNull();
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent) with { Kind = OutboxKind.CalendarResponse }, Time).ShouldBeNull();
+        // An email whose base message is not in the cache: no time to mark it by.
+        OutboxRules.HandledBySend(Email(OutboxStatus.Sent) with { Base = "msg-gone" }, Time).ShouldBeNull();
+    }
+
+    [Fact]
     public void Reply_goes_to_the_person_he_is_answering()
     {
         var thread = new[] { Msg("1", "Pat Example <pat@example.org>", 9, ["owner@example.org", "sam@example.org"], ["lee@example.org"]) };
@@ -302,6 +320,33 @@ public sealed class OutboxTests : IDisposable
 
         var e = again.Events(new DateTimeOffset(2026, 11, 23, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 24, 0, 0, 0, TimeSpan.Zero)).ShouldHaveSingleItem();
         e.ContentHash.ShouldBeNull();
+        new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void Adding_the_join_link_keeps_the_cache_and_the_outbox()
+    {
+        var path = Path.Combine(_dir, "v3.db");
+        var db = DocketDatabase.Open(path, "k");
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                ALTER TABLE calendar_event DROP COLUMN join_link;
+                INSERT INTO calendar_event (calendar_key, event_id, start_utc, end_utc, all_day, title, location, guests, status, content_hash)
+                    VALUES ('work', 'e1', '2026-11-23T18:00:00.0000000+00:00', '2026-11-23T19:00:00.0000000+00:00', 0, 'Lab meeting', '', 3, 'confirmed', 'abc');
+                PRAGMA user_version = 3;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        new OutboxStore(db, null).Save(Email());
+        SqliteConnection.ClearAllPools();
+        var again = new Store(DocketDatabase.Open(path, "k"));
+
+        var e = again.Events(new DateTimeOffset(2026, 11, 23, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 24, 0, 0, 0, TimeSpan.Zero)).ShouldHaveSingleItem();
+        e.ContentHash.ShouldBe("abc");
+        e.JoinLink.ShouldBeNull();
         new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
     }
 }

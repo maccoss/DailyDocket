@@ -65,7 +65,7 @@ public sealed class ScheduleSmokeTests
 
         using (var services = Program.BuildServiceProvider(paths, databaseKey: "smoke"))
         {
-            var events = $$"""{"timeZone":"America/Los_Angeles","events":[{"id":"smoke1","status":"confirmed","summary":"Renewal planning","updated":"2026-11-20T18:00:00.000Z","start":{"dateTime":"{{iso}}"},"end":{"dateTime":"{{end}}"},"attendees":[{"email":"owner@example.org","self":true,"responseStatus":"accepted"},{"email":"pat@example.org","responseStatus":"accepted"}]}]}""";
+            var events = $$"""{"timeZone":"America/Los_Angeles","events":[{"id":"smoke1","status":"confirmed","summary":"Renewal planning","location":"https://example.zoom.us/j/123","updated":"2026-11-20T18:00:00.000Z","start":{"dateTime":"{{iso}}"},"end":{"dateTime":"{{end}}"},"attendees":[{"email":"owner@example.org","self":true,"responseStatus":"needsAction"},{"email":"pat@example.org","responseStatus":"accepted"}]}]}""";
             services.GetRequiredService<CaptureIngestor>().Ingest("smoke", new CapturedCall(
                 "mcp__claude_ai_Google_Calendar__list_events", JsonSerializer.SerializeToElement(new { startTime = iso }), events, "toolu_smoke", "s", DateTimeOffset.UtcNow));
             BriefFile.Save(repo, tomorrow, new MeetingBrief(
@@ -92,6 +92,24 @@ public sealed class ScheduleSmokeTests
             text.ShouldContain("Whether the budget includes travel");
             text.ShouldContain("Brief by Claude");
             Descendants<Button>(window).ShouldContain(b => Equals(b.Content, "Prep now") && b.IsEnabled);
+            var join = Descendants<Button>(window).Single(b => Equals(b.Content, "Join"));
+            join.IsVisible.ShouldBeTrue();
+            join.CommandParameter.ShouldBe("https://example.zoom.us/j/123");
+            join.Command.ShouldNotBeNull();
+
+            // A reload (every sync step and outbox change makes one) leaves an open Brief open.
+            var vm = (MainViewModel)window.DataContext;
+            ShowsUnanswered(window).ShouldBeTrue();
+            vm.Reload();
+            Pump();
+            Descendants<Expander>(window).ShouldHaveSingleItem().IsExpanded.ShouldBeTrue();
+
+            // Maybe clears "not answered" at once, before any calendar pull reads it back; the day
+            // is redrawn for the new response and the Brief stays open.
+            vm.TentativeEventCommand.Execute(vm.Days.SelectMany(d => d.Events).Single());
+            Pump();
+            ShowsUnanswered(window).ShouldBeFalse();
+            Descendants<Expander>(window).ShouldHaveSingleItem().IsExpanded.ShouldBeTrue();
 
             // Minimizing hides the window to the notification area.
             window.WindowState = WindowState.Minimized;
@@ -115,6 +133,9 @@ public sealed class ScheduleSmokeTests
             // A log file still closing; the temp folder is cleaned up eventually.
         }
     }
+
+    private static bool ShowsUnanswered(Window window) =>
+        Descendants<TextBlock>(window).Any(t => t.Text == "not answered" && t.IsVisible);
 
     private static void Pump()
     {
