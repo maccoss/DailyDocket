@@ -55,6 +55,19 @@ impact first, empty headings deleted at release.
 - **Setup.** Personal details (addresses, Slack id, calendars, extra machine senders) were read
   from `%LOCALAPPDATA%\DailyDocket\docket.yaml`; `docs/docket.example.yaml` shows the format. A
   banner said what was missing, including when Claude Code needed `claude auth login --claudeai`.
+- **Installer and updates.** DailyDocket installed from `DailyDocket-win-x64-Setup.exe` or
+  `DailyDocket-win-arm64-Setup.exe` on the GitHub Release, with no administrator rights, and kept
+  itself up to date: it looked for a new release at startup and every four hours, downloaded it in
+  the background, and showed "Update ready: restart to install" with **Restart** above the status
+  line. It never restarted by itself, waited for a reply that was mid-send, and stayed quiet when
+  offline. Each computer took only builds for its own processor, so the ARM64 Surface never ran an
+  x64 build under emulation; `"BetaUpdates": true` in `settings.json` took beta releases too.
+  (`src/DailyDocket.App/Services/UpdateService.cs`, `.github/workflows/release.yml`)
+- **Setup checks.** At startup the banner said when Claude Code was not installed, when it was not
+  signed in (`claude auth login --claudeai`), or when Git was missing, each with the command that
+  fixes it, and cleared by itself on returning to the window once fixed.
+  (`src/DailyDocket.Core/Setup/SetupChecks.cs`)
+- **An app icon.** A teal square with a white D, on the window, the taskbar and the Start menu.
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
   SQLCipher, with its key kept in Windows Credential Manager.
 

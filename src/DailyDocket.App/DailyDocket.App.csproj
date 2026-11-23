@@ -6,17 +6,21 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>DailyDocket.App</RootNamespace>
     <AssemblyName>DailyDocket</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
 
     <!--
       The app supplies its own Program.Main (as LabOps does, so Velopack can run first once updates
       arrive), so App.xaml is a Page rather than the ApplicationDefinition (below).
     -->
     <StartupObject>DailyDocket.App.Program</StartupObject>
+    <!-- Velopack packs a folder publish; single-file would defeat delta updates. -->
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The same Velopack as LabOps, so a fix found in one applies to the other. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageReference Include="Serilog" Version="4.4.0" />
@@ -38,6 +42,11 @@
       A release publishes it with Native AOT instead.
     -->
     <ProjectReference Include="..\DailyDocket.Hook\DailyDocket.Hook.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window's title bar icon (MainWindow.xaml); the exe's comes from ApplicationIcon. -->
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
   <ItemGroup>

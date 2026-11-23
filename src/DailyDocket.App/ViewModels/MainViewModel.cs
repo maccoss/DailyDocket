@@ -747,8 +747,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         };
     }
 
+    /// <summary>
+    /// Shows what the computer is missing (Claude Code, its sign-in, Git), from the window's
+    /// <see cref="Core.Setup.SetupChecks"/>, or clears it with null.
+    /// </summary>
+    public void ShowComputerProblem(string? problem)
+    {
+        _computerProblem = problem;
+        Banner = SetupProblem() ?? FailureBanner();
+    }
+
+    private string? _computerProblem;
+
     private string? SetupProblem()
     {
+        // First: until Claude Code works, nothing else in the banner can be fixed by syncing.
+        if (_computerProblem is { } computer)
+        {
+            return computer;
+        }
+
         if (_config.Problem is { } problem)
         {
             return problem;

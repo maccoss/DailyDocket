@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:DailyDocket.App.ViewModels"
         xmlns:views="clr-namespace:DailyDocket.App.Views"
-        Title="DailyDocket" Width="1100" Height="820" MinWidth="560" MinHeight="420"
+        Title="DailyDocket" Icon="pack://application:,,,/Assets/app.ico" Width="1100" Height="820" MinWidth="560" MinHeight="420"
         Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource InkBrush}"
         FontFamily="Segoe UI" FontSize="14"
         WindowStartupLocation="CenterScreen">
@@ -24,6 +24,15 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding Version, StringFormat=v{0}}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" />
                 <TextBlock Text="{Binding Status}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <!-- An update is downloaded: it installs only when Restart is pressed. Its DataContext is the UpdateBarViewModel (set in code). -->
+        <Border x:Name="UpdateBar" DockPanel.Dock="Bottom" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                Padding="24,6" Visibility="{Binding IsReady, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Restart" Command="{Binding RestartCommand}" ToolTip="Close DailyDocket, install the update and open it again" />
+                <TextBlock Text="{Binding Text}" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
             </DockPanel>
         </Border>
 
