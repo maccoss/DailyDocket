@@ -22,28 +22,40 @@ text alike.
   tools. The Send run sees outbox items and thread ids only, and the `PreToolUse` guard
   (`DailyDocket.Hook guard`) allows a send only when it matches a claimed outbox item exactly, once.
   If the guard fails it exits 2, which blocks the call.
-- **Claude runs in an empty per-run folder** under `%LOCALAPPDATA%\DailyDocket\runs`, so no project
-  CLAUDE.md, settings or hooks are picked up; its hooks come only from the run's `--settings` file.
+- **Claude runs in an empty per-run folder** under `%LOCALAPPDATA%\DailyDocket\runs`, outside any
+  repository (Claude Code walks up for CLAUDE.md), with `--setting-sources local` so the owner's own
+  settings and hooks do not apply, no inherited `CLAUDE*`/`ANTHROPIC*` variables, and
+  `--permission-mode dontAsk`. Its hooks come only from the run's `--settings` file.
+- **This repository is public.** Nothing personal goes in it: the owner's addresses, Slack id,
+  calendar ids and machine senders live in `docket.yaml` (`docs/docket.example.yaml` shows the
+  format). Test fixtures are synthetic, in the real shapes; real captures are read in place by the
+  opt-in tests and never copied here.
 
 ## Layout
 
 ```
 Directory.Build.props        single <Version> (CalVer YY.feature.patch), warnings as errors
 global.json                  .NET 10 SDK; opts dotnet test into Microsoft Testing Platform
-docs/design.md               the design
+docs/design.md               the design; docs/docket.example.yaml, the personal config's format
 spike/                       phase 1 checks (run-spike.ps1); spike/out is git-ignored (holds real mail)
 release-notes/               one file per version; becomes the GitHub Release body
 src/DailyDocket.Core/        all logic, no UI types                          net10.0
-  Claude/                    copied from LabOps.Core: ClaudeSession, StreamJsonParser, events, sign-in
+  Calendar/ Mail/ Slack/     parsers for each connector's results, and the artifact's rules
+  Capture/                   CapturedCall: one hook capture
+  Claude/                    from LabOps.Core: ClaudeSession, StreamJsonParser, AppTools, AppToolServer
+  Configuration/             DocketConfig (docket.yaml)
+  Jobs/                      pull and triage plans, JobRunner, SyncScheduler, the connector tool lists
   Infrastructure/            AppInfo, AppPaths, SettingsStore, SingleInstance (from LabOps)
   Processes/                 ProcessRunner, ToolLocator (from LabOps)
   Sync/                      GitClient (from LabOps); SyncService comes with the to-do repository
+src/DailyDocket.Data/        SQLite with SQLCipher: schema, capture ingestion, the tabs' queries
 src/DailyDocket.Hook/        the hook exe, no Core reference, Native AOT     net10.0
-src/DailyDocket.Tests/       xUnit v3 + Shouldly                             net10.0
+src/DailyDocket.App/         WPF shell, thin                                 net10.0-windows
+src/DailyDocket.Tests/       xUnit v3 + Shouldly                             net10.0-windows
 ```
 
-Still to come, in build order: `DailyDocket.Data` (SQLite with SQLCipher), `DailyDocket.App` (WPF
-shell), `DailyDocket.LocalAI` (Foundry Local behind `IAssistant`).
+Still to come: the to-do repository (phase 3), the outbox and Send (phase 4), and
+`DailyDocket.LocalAI` (Foundry Local behind `IAssistant`, phase 5).
 
 Code copied from LabOps (`uw-maccosslab/LabOps`, `src/LabOps.Core`) keeps its comments; when a
 fix lands in one copy, consider whether the other needs it.
@@ -56,7 +68,11 @@ dotnet test --project src/DailyDocket.Tests/DailyDocket.Tests.csproj
 ```
 
 - `DAILYDOCKET_DATA=<folder>` runs with settings, database and logs in that folder instead of
-  `%LOCALAPPDATA%\DailyDocket`.
+  `%LOCALAPPDATA%\DailyDocket`. Put a `docket.yaml` there.
+- Opt-in tests: `DAILYDOCKET_CAPTURES=<folder>` parses real captures in place;
+  `DAILYDOCKET_LIVE=<folder with docket.yaml>` runs the real pull and triage jobs (read-only, costs a
+  little Claude usage) into a temporary folder; `DAILYDOCKET_INSPECT=<that folder>` prints what the
+  tabs would show.
 - Publishing the hook ahead of time needs Visual Studio's C++ build tools.
 - Both `win-x64` and `win-arm64` are published; nothing may depend on x64 emulation.
 

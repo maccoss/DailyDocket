@@ -1,0 +1,245 @@
+﻿<Window x:Class="DailyDocket.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:DailyDocket.App.ViewModels"
+        Title="DailyDocket" Width="1100" Height="820" MinWidth="560" MinHeight="420"
+        Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource InkBrush}"
+        FontFamily="Segoe UI" FontSize="14"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel>
+        <!-- Header: the date, Refresh. -->
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="24,16,24,10">
+            <DockPanel LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" Text="DailyDocket" FontFamily="Georgia" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Bottom" />
+                <TextBlock DockPanel.Dock="Left" Text="{Binding Today}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" Margin="16,0,0,4" VerticalAlignment="Bottom" />
+                <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom" ToolTip="Sync calendar, mail and Slack now" />
+                <TextBlock DockPanel.Dock="Right" Text="Syncing..." Style="{StaticResource Muted}" Margin="0,0,12,6" VerticalAlignment="Bottom"
+                           Visibility="{Binding IsSyncing, Converter={StaticResource BoolToVisibility}}" />
+            </DockPanel>
+        </Border>
+
+        <!-- Status: online, when each source last synced, the outbox, the local model. -->
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="24,6">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Version, StringFormat=v{0}}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding Status}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <!-- Something to act on: setup, sign-in, a failed sync. -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource WarnSoftBrush}" BorderBrush="{StaticResource WarnBrush}" BorderThickness="1" CornerRadius="8"
+                Margin="24,12,24,0" Padding="12,8">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Banner}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <TextBlock Text="{Binding Banner}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" />
+        </Border>
+
+        <TabControl Margin="24,12,24,0" Background="Transparent" BorderThickness="0" Padding="0,10,0,0">
+            <TabItem Header="SCHEDULE">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding ScheduleSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Days}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:DayItem}">
+                                    <StackPanel Margin="0,0,0,18">
+                                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,6" Margin="0,0,0,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Heading}" FontFamily="Georgia" FontSize="18.5" FontWeight="SemiBold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Date}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" Margin="10,0,0,0" VerticalAlignment="Bottom" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <ItemsControl ItemsSource="{Binding Background}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:BannerItem}">
+                                                    <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="11,6" Margin="0,0,0,6">
+                                                        <DockPanel>
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Tag}" Style="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource Ink2Brush}" TextWrapping="Wrap" />
+                                                        </DockPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <ItemsControl ItemsSource="{Binding Events}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:EventItem}">
+                                                    <Border>
+                                                        <Border.Style>
+                                                            <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding NeedsReply}" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Clash}" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource CritBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Quiet}" Value="True">
+                                                                        <Setter Property="Background" Value="Transparent" />
+                                                                        <Setter Property="BorderThickness" Value="1" />
+                                                                        <Setter Property="Padding" Value="12,5" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="110" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Time}" Style="{StaticResource Mono}" Margin="0,1,0,0" />
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Text="{Binding Title}" FontWeight="Medium" TextWrapping="Wrap" />
+                                                                <WrapPanel Margin="0,3,0,0">
+                                                                    <Border Style="{StaticResource Chip}" Background="{StaticResource AccentSoftBrush}">
+                                                                        <Border.Visibility>
+                                                                            <Binding Path="Tag" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                                        </Border.Visibility>
+                                                                        <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" Foreground="{StaticResource AccentBrush}" />
+                                                                    </Border>
+                                                                    <Border Style="{StaticResource Chip}" Background="{StaticResource CritSoftBrush}" Visibility="{Binding Clash, Converter={StaticResource BoolToVisibility}}">
+                                                                        <TextBlock Text="clash" Style="{StaticResource ChipText}" Foreground="{StaticResource CritBrush}" />
+                                                                    </Border>
+                                                                    <Border Style="{StaticResource Chip}" Background="{StaticResource WarnSoftBrush}" Visibility="{Binding NeedsReply, Converter={StaticResource BoolToVisibility}}">
+                                                                        <TextBlock Text="not answered" Style="{StaticResource ChipText}" Foreground="{StaticResource WarnBrush}" />
+                                                                    </Border>
+                                                                    <TextBlock Text="{Binding Location}" Style="{StaticResource Muted}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" />
+                                                                </WrapPanel>
+                                                            </StackPanel>
+                                                            <Button Grid.Column="2" Content="Open" Style="{StaticResource OpenButton}" VerticalAlignment="Top"
+                                                                    Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Link}"
+                                                                    ToolTip="Open in Google Calendar" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="TO DO">
+                <TextBlock Style="{StaticResource Muted}" Margin="0,10,0,0"
+                           Text="Your to-do list moves here with the next update, synced through your private DailyDocket-Data repository. Until then, keep using the dashboard's To do column." />
+            </TabItem>
+
+            <TabItem Header="EMAIL">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding MailSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Mail}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:MailItem}">
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Staleness}" Value="1">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Staleness}" Value="2">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource CritBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Age}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" />
+                                                <TextBlock Text="{Binding From}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Subject}" Foreground="{StaticResource Ink2Brush}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Snippet}" Style="{StaticResource Muted}" FontSize="13" MaxHeight="38" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                            <DockPanel Margin="0,6,0,0">
+                                                <Button DockPanel.Dock="Right" Content="Open in Gmail" Style="{StaticResource OpenButton}" VerticalAlignment="Top"
+                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Link}" />
+                                                <WrapPanel>
+                                                    <Border Style="{StaticResource Chip}" Background="{StaticResource WarnBrush}" Visibility="{Binding IsDraft, Converter={StaticResource BoolToVisibility}}">
+                                                        <TextBlock Text="unsent draft" Style="{StaticResource ChipText}" Foreground="White" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource Chip}" Background="{StaticResource OkBrush}" Padding="8,3" Margin="0,0,10,0">
+                                                        <Border.Visibility>
+                                                            <Binding Path="Why" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                        </Border.Visibility>
+                                                        <TextBlock Text="{Binding Why}" Foreground="White" FontSize="12.5" TextWrapping="Wrap" />
+                                                    </Border>
+                                                </WrapPanel>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="SLACK">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding SlackSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Slack}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:SlackItem}">
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Stale}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Age}" Style="{StaticResource Mono}" Foreground="{StaticResource MutedBrush}" />
+                                                <TextBlock Text="{Binding From}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Where}" Foreground="{StaticResource Ink2Brush}" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Text}" Style="{StaticResource Muted}" FontSize="13" MaxHeight="38" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                            <DockPanel Margin="0,6,0,0">
+                                                <Button DockPanel.Dock="Right" Content="Open in Slack" Style="{StaticResource OpenButton}" VerticalAlignment="Top"
+                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Link}" />
+                                                <Border Style="{StaticResource Chip}" Background="{StaticResource OkBrush}" Padding="8,3" HorizontalAlignment="Left">
+                                                    <Border.Visibility>
+                                                        <Binding Path="Why" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                    </Border.Visibility>
+                                                    <TextBlock Text="{Binding Why}" Foreground="White" FontSize="12.5" TextWrapping="Wrap" />
+                                                </Border>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

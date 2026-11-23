@@ -5,6 +5,7 @@
 owner:
   name: Owner Person
   emails: [owner@example.org]        # mail from these addresses was written by the owner
+  account: owner@example.org         # the Gmail account, for links that open a thread in the right mailbox
   slackUserId: U0000000001            # an emoji reaction or message from this id counts as an answer
   about: a professor who runs a research lab   # one line of context for the triage model
 

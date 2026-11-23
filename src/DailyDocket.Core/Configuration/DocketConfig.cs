@@ -68,6 +68,9 @@ public sealed class OwnerConfig
     /// <summary>Mail from any of these addresses was written by the owner.</summary>
     public List<string> Emails { get; set; } = [];
 
+    /// <summary>The Gmail account address, for links that open a thread in the right mailbox.</summary>
+    public string Account { get; set; } = "";
+
     public string SlackUserId { get; set; } = "";
 
     /// <summary>One sentence about the owner, given to the triage model for context.</summary>

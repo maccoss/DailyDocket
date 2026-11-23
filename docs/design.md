@@ -271,6 +271,16 @@ Build order, each phase usable on its own:
 
 Still to run: pillar, SpeedyGonzales and the Surface (ARM64 `claude.exe`), and Foundry Local with `phi-4-mini` on each.
 
+### Phase 2 as built
+
+The read-only mirror works against the real accounts on skiddaw. A first sync took about three minutes and $1.50 (calendar $0.07, mail $0.13, Slack $0.19, triage $1.13, every item new); later syncs read only what changed. Choices made while building it:
+
+- **Exact calls, not goals.** Each pull's prompt lists the calls and their arguments; Claude only pages (following tokens it sees in receipts) and, for mail, reads the thread ids a docket tool returns. Haiku follows this reliably.
+- **Full sweeps every six hours, two-day sweeps in between.** A full sweep's start is a watermark; the Email tab shows threads seen since the last full sweep began, so an archived thread leaves at the next one. Each run reads at most 40 changed threads; the rest wait for the next run.
+- **Triage is one Sonnet run per sync**, reading transcripts from the cache through `triage_batch` and writing through `record_verdicts`, in batches of 15, mail first. It has no connector tools.
+- **Run isolation:** `--setting-sources local` (the owner's `~/.claude` settings and hooks do not apply), `--permission-mode dontAsk`, inherited `CLAUDE*`/`ANTHROPIC*` variables removed.
+- **Not yet:** the tray, notifications, Handled marks (phase 3, in git), open loops ("you said you would"), and `slack_read_thread` for conversations whose search context runs out.
+
 ## Open decisions
 
 Each has a recommendation, so work can start on the defaults.
