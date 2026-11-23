@@ -119,24 +119,32 @@ public sealed class SharedJobs
             provider.GetRequiredService<Func<DocketConfig>>(),
             () => DateTimeOffset.Now,
             AppInfo.MachineName,
-            (slot, ct) => Work(provider, slot, ct),
+            (request, ct) => Work(provider, request, ct),
             provider.GetRequiredService<ILogger<NightlyJobs>>()));
         services.AddSingleton<SharedJobs>();
     }
 
-    /// <summary>The nightly run is the deep sweep then prep; the midday catch-up is prep alone.</summary>
-    private static async Task<IReadOnlyList<JobOutcome>> Work(IServiceProvider provider, NightlySlot slot, CancellationToken cancellationToken)
+    /// <summary>
+    /// The nightly run is the deep sweep then prep; the midday catch-up is prep alone; a retry is
+    /// prep for the briefs that failed, alone.
+    /// </summary>
+    private static async Task<NightlyWork> Work(IServiceProvider provider, NightlyRequest request, CancellationToken cancellationToken)
     {
-        var outcomes = new List<JobOutcome>();
-        if (slot == NightlySlot.Nightly)
+        var prep = provider.GetRequiredService<MeetingPrep>();
+        if (request.OnlyEvents is { } only)
+        {
+            return new NightlyWork([], await prep.RunDueAsync(DateTimeOffset.Now, cancellationToken, only));
+        }
+
+        IReadOnlyList<JobOutcome> sweep = [];
+        if (request.Slot == NightlySlot.Nightly)
         {
             // Under the sync's lock: the deep sweep's triage must not race a regular sync's.
             var scheduler = provider.GetRequiredService<SyncScheduler>();
-            outcomes.AddRange(await scheduler.ExclusiveAsync(ct => DeepSweepAsync(provider, ct), cancellationToken));
+            sweep = await scheduler.ExclusiveAsync(ct => DeepSweepAsync(provider, ct), cancellationToken);
         }
 
-        outcomes.AddRange(await provider.GetRequiredService<MeetingPrep>().RunDueAsync(DateTimeOffset.Now, cancellationToken));
-        return outcomes;
+        return new NightlyWork(sweep, await prep.RunDueAsync(DateTimeOffset.Now, cancellationToken));
     }
 
     /// <summary>The nightly deep sweep: read older mail, then judge what it found.</summary>
@@ -181,15 +189,21 @@ public sealed class SharedJobs
 
         public JobLease? Load() => LeaseFile.Load(book.Repository.Root);
 
-        public async Task SaveAsync(JobLease lease, CancellationToken cancellationToken)
+        public async Task<bool> SaveAsync(JobLease lease, CancellationToken cancellationToken)
         {
             LeaseFile.Save(book.Repository.Root, lease);
-            book.NoteChange($"Nightly jobs lease renewed by {lease.Holder}");
-            if (book.Sync.IsCloned)
+            book.NoteChange(lease.Running is null ? $"Nightly jobs lease renewed by {lease.Holder}" : $"Nightly run claimed by {lease.Holder}");
+            if (!book.Sync.IsCloned)
             {
-                // Pushed at once: another machine deciding whether to take over must see it.
-                await book.SyncNowAsync(cancellationToken);
+                return true; // one machine, nobody to tell
             }
+
+            // Pushed at once: another machine deciding whether to take over must see it.
+            var result = await book.SyncNowAsync(cancellationToken);
+            return result.Ok && !result.Offline;
         }
+
+        // Written only; the commit is made by the next sync (it adds everything that changed).
+        public void SaveLocally(JobLease lease) => LeaseFile.Save(book.Repository.Root, lease);
     }
 }

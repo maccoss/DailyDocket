@@ -301,10 +301,50 @@ public sealed class PrepTests
                 (_, _) => Task.FromResult(new JobOutcome("prep", true, null, 0, 0.1m)),
                 () => root, Config, () => "sonnet", (_, _) => [Event("e1", At(27, 10))], () => [], _ => { }, "skiddaw");
 
-            var outcome = (await prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken)).Single();
+            var outcome = (await prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken)).Single().Outcome;
 
             outcome.Ok.ShouldBeFalse();
             outcome.Detail!.ShouldContain("without writing a brief");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Prep_now_leaves_a_meeting_the_nightly_run_is_preparing_to_that_run()
+    {
+        var root = Directory.CreateTempSubdirectory("dd-prep-").FullName;
+        try
+        {
+            var started = new TaskCompletionSource();
+            var release = new TaskCompletionSource();
+            var runs = 0;
+            var prep = new MeetingPrep(
+                async (plan, _) =>
+                {
+                    Interlocked.Increment(ref runs);
+                    started.TrySetResult();
+                    await release.Task;
+                    var target = plan.Prep!.Targets[0];
+                    plan.Prep.Save(target, Brief(target.Event.EventId) with { Start = target.Event.Start });
+                    return new JobOutcome("prep", true, null, 0, 0.2m);
+                },
+                () => root, Config, () => "sonnet", (_, _) => [Event("e1", At(27, 10))], () => [], _ => { }, "skiddaw");
+
+            var nightly = prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken);
+            await started.Task;
+            prep.IsPreparing("e1").ShouldBeTrue();
+
+            var now = await prep.PrepNowAsync("e1", FridayNight, TestContext.Current.CancellationToken);
+
+            now.ShouldNotBeNull().Ok.ShouldBeFalse();
+            now.Detail!.ShouldContain("already preparing");
+            release.SetResult();
+            (await nightly).ShouldHaveSingleItem().Outcome.Ok.ShouldBeTrue();
+            runs.ShouldBe(1);
+            prep.IsPreparing("e1").ShouldBeFalse();
         }
         finally
         {

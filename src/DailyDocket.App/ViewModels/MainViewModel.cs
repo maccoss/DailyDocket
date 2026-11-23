@@ -62,7 +62,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         MailCompose.Queued += _ => ReloadOutbox();
         SlackCompose.Queued += _ => ReloadOutbox();
-        _worker.Changed += changed => OnUi(() =>
+        Action<OutboxItem> workerChanged = changed => OnUi(() =>
         {
             // Marked read only once the reply has gone: a reply that was held (someone wrote in the
             // meantime) or undone must not leave the newer message looking read in Gmail.
@@ -74,32 +74,50 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ReloadOutbox();
             Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
         });
+        _worker.Changed += workerChanged;
+        _detach.Add(() => _worker.Changed -= workerChanged);
         _countdown.Tick += (_, _) => ReloadOutbox();
 
         // A Handled mark, here or from another machine, changes what the tabs show.
-        _book.Changed += () => OnUi(Reload);
-        _book.Synced += result => OnUi(() =>
+        Action bookChanged = () => OnUi(Reload);
+        _book.Changed += bookChanged;
+        _detach.Add(() => _book.Changed -= bookChanged);
+        Action<Core.Sync.DataSyncResult> bookSynced = result => OnUi(() =>
         {
             _dataProblem = result.Problem ?? (result.SetAside is { } branch
                 ? $"A to-do was changed on two computers at once. This computer's version is kept on the {branch} branch of your data repository; the list shows the other."
                 : null);
             Banner = SetupProblem() ?? FailureBanner();
         });
+        _book.Synced += bookSynced;
+        _detach.Add(() => _book.Synced -= bookSynced);
 
-        _scheduler.Started += () => OnUi(() =>
+        Action started = () => OnUi(() =>
         {
             IsSyncing = true;
             Status = StatusLine(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).Offset);
         });
-        _scheduler.JobFinished += _ => OnUi(Reload);
-        _scheduler.Finished += result => OnUi(() =>
+        _scheduler.Started += started;
+        _detach.Add(() => _scheduler.Started -= started);
+        Action<JobOutcome> jobFinished = _ => OnUi(Reload);
+        _scheduler.JobFinished += jobFinished;
+        _detach.Add(() => _scheduler.JobFinished -= jobFinished);
+        Action<SyncResult> finished = result => OnUi(() =>
         {
             _lastSync = result;
             IsSyncing = false;
             Reload();
         });
+        _scheduler.Finished += finished;
+        _detach.Add(() => _scheduler.Finished -= finished);
         AttachShared();
     }
+
+    /// <summary>
+    /// Undoes each subscription to the long-lived services (they are singletons that outlive the
+    /// window): without this a sync finishing after the window closed still ran its handlers.
+    /// </summary>
+    private readonly List<Action> _detach = [];
 
     public TodoViewModel Todos { get; }
 
@@ -965,6 +983,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             failed.Add(data);
         }
 
+        if (_nightlyProblem is { } nightly)
+        {
+            failed.Add(nightly);
+        }
+
         return failed.Count > 0 ? string.Join(" ", failed) : null;
     }
 
@@ -1060,6 +1083,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _countdown.Stop();
+        foreach (var detach in _detach)
+        {
+            detach();
+        }
+
+        _detach.Clear();
         _stop.Cancel();
         _stop.Dispose();
     }

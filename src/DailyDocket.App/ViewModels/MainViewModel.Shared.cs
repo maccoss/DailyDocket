@@ -19,16 +19,39 @@ public sealed partial class MainViewModel
     private void AttachShared()
     {
         // A brief written here (Prep now, the nightly run) or arriving from another machine's sync.
-        _shared.Prep.BriefSaved += _ => OnUi(Reload);
+        Action<MeetingBrief> briefSaved = _ => OnUi(Reload);
+        _shared.Prep.BriefSaved += briefSaved;
+        _detach.Add(() => _shared.Prep.BriefSaved -= briefSaved);
 
         // Verdicts another machine shared can take threads off the Email and Slack tabs.
-        _shared.CacheChanged += () => OnUi(Reload);
+        Action cacheChanged = () => OnUi(Reload);
+        _shared.CacheChanged += cacheChanged;
+        _detach.Add(() => _shared.CacheChanged -= cacheChanged);
 
         // After a sync's results are on the tabs (queued after the reload above it), and whenever
         // an outbox item changes: anything new that needs Mike becomes a notification.
-        _scheduler.Finished += _ => OnUi(CheckNotices);
-        _worker.Changed += _ => OnUi(CheckNotices);
+        Action<Core.Jobs.SyncResult> notices = _ => OnUi(CheckNotices);
+        _scheduler.Finished += notices;
+        _detach.Add(() => _scheduler.Finished -= notices);
+        Action<Core.Outbox.OutboxItem> outboxNotices = _ => OnUi(CheckNotices);
+        _worker.Changed += outboxNotices;
+        _detach.Add(() => _worker.Changed -= outboxNotices);
+
+        // A nightly run's problem stays in the banner until a later run goes well: the sweep and
+        // the briefs run unattended at 2 a.m., so this is the only place a failure can be seen.
+        Action<Core.Nightly.NightlyTick> nightly = tick => OnUi(() =>
+        {
+            if (tick.Ran)
+            {
+                _nightlyProblem = tick.Problem;
+                Banner = SetupProblem() ?? FailureBanner();
+            }
+        });
+        _shared.Nightly.Finished += nightly;
+        _detach.Add(() => _shared.Nightly.Finished -= nightly);
     }
+
+    private string? _nightlyProblem;
 
     /// <summary>Starts the nightly schedule, once the configuration is complete, and takes the notifications' baseline.</summary>
     private void StartShared()

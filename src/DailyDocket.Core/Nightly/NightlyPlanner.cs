@@ -49,6 +49,17 @@ public static class NightlyPlanner
         return a < b ? a : b;
     }
 
+    /// <summary>
+    /// The most recent scheduled slot, nightly or catch-up, at or before <paramref name="now"/>: the
+    /// slot a run now belongs to, for counting failures and claims per slot.
+    /// </summary>
+    public static DateTimeOffset LatestSlot(NightlyConfig config, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var a = Latest(Time(config.At, DefaultNightly), now, zone);
+        var b = Latest(Time(config.CatchUpAt, DefaultCatchUp), now, zone);
+        return a > b ? a : b;
+    }
+
     /// <summary>Parses "HH:mm"; anything else is the default, so a typo never stops the jobs.</summary>
     internal static TimeOnly Time(string? text, TimeOnly fallback) =>
         TimeOnly.TryParseExact(text?.Trim(), ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : fallback;
