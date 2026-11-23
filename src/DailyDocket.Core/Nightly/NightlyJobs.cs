@@ -79,14 +79,25 @@ public sealed class NightlyJobs
         {
             var config = _config();
             var zone = Zone(config);
+            if (string.IsNullOrWhiteSpace(config.Nightly.Machine) || (!config.Nightly.IsDesignated(_machine) && config.Nightly.FallbackRank(_machine) < 0))
+            {
+                return new NightlyTick(NightlySlot.None, false, "this machine does not run the nightly jobs", []);
+            }
+
+            // The local copy first: syncing the repository every ten minutes to learn that nothing
+            // is due would be wasted git traffic. Only a due job is checked against the remote.
+            var now = _clock();
+            if (NightlyPlanner.Due(config.Nightly, _lease.Load(), now, zone) == NightlySlot.None)
+            {
+                return new NightlyTick(NightlySlot.None, false, "nothing due", []);
+            }
+
             await _lease.RefreshAsync(cancellationToken).ConfigureAwait(false);
             var lease = _lease.Load();
-            var now = _clock();
-
             var slot = NightlyPlanner.Due(config.Nightly, lease, now, zone);
             if (slot == NightlySlot.None)
             {
-                return new NightlyTick(slot, false, "nothing due", []);
+                return new NightlyTick(slot, false, "another machine already ran it", []);
             }
 
             if (!IsOnline())

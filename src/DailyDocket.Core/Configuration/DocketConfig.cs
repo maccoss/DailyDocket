@@ -27,6 +27,9 @@ public sealed class DocketConfig
     /// <summary>Which machine runs the shared nightly jobs (deep sweep, meeting prep), and when.</summary>
     public NightlyConfig Nightly { get; set; } = new();
 
+    /// <summary>Which events get a meeting brief.</summary>
+    public PrepConfig Prep { get; set; } = new();
+
     /// <summary>Reads <paramref name="path"/>, or returns the defaults when it does not exist.</summary>
     public static DocketConfig Load(string path)
     {
@@ -114,6 +117,23 @@ public sealed class ScheduleConfig
     public int Days { get; set; } = 7;
 
     public string TimeZone { get; set; } = "America/Los_Angeles";
+}
+
+/// <summary>
+/// Which events meeting prep covers. Declined, cancelled and all-day events, and meetings with no
+/// one else invited, are always skipped; a secondary calendar's events (primary: false) only when
+/// the owner accepted them. Here so the rules can change without a release.
+/// </summary>
+public sealed class PrepConfig
+{
+    /// <summary>How many working days (Monday to Friday) ahead, starting today, get briefs.</summary>
+    public int WorkingDays { get; set; } = 2;
+
+    /// <summary>Calendar keys never prepped, for example the home calendar.</summary>
+    public List<string> SkipCalendars { get; set; } = [];
+
+    /// <summary>At most this many briefs per run, so a crowded week cannot spend the night's usage.</summary>
+    public int MaxPerRun { get; set; } = 20;
 }
 
 /// <summary>

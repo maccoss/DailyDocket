@@ -200,6 +200,7 @@ public static class Program
                 provider.GetRequiredService<ILogger<OutboxWorker>>());
         });
 
+        SharedJobs.Register(services);
         services.AddSingleton<Drafter>();
         services.AddSingleton<TodoViewModel>();
         services.AddSingleton<MainViewModel>();

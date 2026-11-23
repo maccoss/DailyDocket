@@ -65,6 +65,16 @@ impact first, empty headings deleted at release.
 - **Setup.** Personal details (addresses, Slack id, calendars, extra machine senders) were read
   from `%LOCALAPPDATA%\DailyDocket\docket.yaml`; `docs/docket.example.yaml` shows the format. A
   banner said what was missing, including when Claude Code needed `claude auth login --claudeai`.
+- **Meeting briefs.** Every meeting in the next two working days got a one-screen brief from
+  Claude: who is coming and their role, what the meeting is for, the email threads and documents
+  that led to it, what Mike owes those people, and what is still unclear. Briefs were written each
+  night and at a midday catch-up by one computer (`nightly.machine` in `docket.yaml`; a fallback
+  took over when it was off for more than two hours), saved in the data repository, and shown under
+  each event on the Schedule as **Brief**, offline too. A brief was remade when its event changed,
+  and said "may be out of date" until then. **Prep now** on any event wrote one at once. Declined,
+  all-day and home-calendar events, meetings with no one else invited, and department events Mike
+  had not accepted were skipped (`prep` in `docket.yaml`). Prep runs could only read Calendar, Gmail
+  and Drive, and could save only the brief for their own meeting.
 - **Encrypted local copy.** The local copy of mail, calendar and Slack was encrypted with
   SQLCipher, with its key kept in Windows Credential Manager.
 

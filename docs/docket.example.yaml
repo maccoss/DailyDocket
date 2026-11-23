@@ -43,3 +43,11 @@ nightly:
   at: "02:00"                          # local time of the nightly run
   catchUpAt: "12:30"                   # midday meeting prep for events added or changed since
   graceHours: 2
+
+# Meeting prep: a brief for each meeting in the next working days. Declined, cancelled and
+# all-day events and meetings with no one else invited are always skipped, and a secondary
+# calendar's events (primary: false) unless accepted.
+prep:
+  workingDays: 2
+  skipCalendars: [home]
+  maxPerRun: 20

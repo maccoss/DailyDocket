@@ -12,6 +12,18 @@ public static class Converters
     /// <summary>Visible when the value is null or an empty string: the reader's "select a thread" hint.</summary>
     public static readonly IValueConverter EmptyToVisibility = new NonEmpty(whenEmpty: true);
 
+    /// <summary>Visible when the value is not null: a meeting's brief, when it has one.</summary>
+    public static readonly IValueConverter NotNullToVisibility = new NotNull();
+
+    private sealed class NotNull : IValueConverter
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            value is null ? Visibility.Collapsed : Visibility.Visible;
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
     /// <summary>Visible when the value is false: the reading view of a task that is not being edited.</summary>
     public static readonly IValueConverter FalseToVisible = new FalseVisible();
 
