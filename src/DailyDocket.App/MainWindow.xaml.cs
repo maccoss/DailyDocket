@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using DailyDocket.App.Services;
 using DailyDocket.App.ViewModels;
 using DailyDocket.App.Views;
@@ -91,6 +92,24 @@ public partial class MainWindow : Window
     }
 
     private void OnSetup(object sender, RoutedEventArgs e) => OpenSetup();
+
+    /// <summary>Below this width the Schedule and To do columns stack (the artifact's breakpoint).</summary>
+    private const double SideBySideWidth = 900;
+
+    /// <summary>
+    /// Side by side when there is room, stacked when there is not: two columns in a narrow window
+    /// squeezed both into lines a few words long.
+    /// </summary>
+    private void OnDayGridSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var wide = e.NewSize.Width >= SideBySideWidth;
+        DayGrid.ColumnDefinitions[1].Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        DayGrid.RowDefinitions[1].Height = wide ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(TodoColumn, wide ? 1 : 0);
+        Grid.SetRow(TodoColumn, wide ? 0 : 1);
+        ScheduleColumn.Margin = wide ? new Thickness(0, 0, 14, 0) : new Thickness(0, 0, 0, 14);
+        TodoColumn.Margin = wide ? new Thickness(14, 0, 0, 0) : new Thickness(0);
+    }
 
     private bool _setupOpen;
 

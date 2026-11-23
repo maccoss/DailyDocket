@@ -89,7 +89,7 @@ from an installed one's. Publishing the hook with Native AOT needs Visual Studio
 
 ## Status
 
-Working day to day: the four tabs, offline reading, to-dos and Handled marks in git, replies to
+Working day to day: Schedule and To do side by side, the Email and Slack tabs, offline reading, to-dos and Handled marks in git, replies to
 email and Slack through the outbox, RSVPs, Draft with Claude, the nightly deep sweep and meeting
 prep, tray and notifications. Still to come: creating and moving events, and offline drafting with
 a local model (Foundry Local).

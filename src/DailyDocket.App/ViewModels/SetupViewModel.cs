@@ -66,6 +66,26 @@ public sealed partial class SetupViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ChangeRepositoryCommand))]
     public partial string RepositoryText { get; set; }
 
+    /// <summary>
+    /// Open Setup by itself at startup while something is missing. A computer kept without one
+    /// piece on purpose would otherwise get the window at every start (code review, November 2026).
+    /// </summary>
+    public bool OpenAtStartup
+    {
+        get => _settings.OpenSetupAtStartup;
+        set
+        {
+            if (_settings.OpenSetupAtStartup == value)
+            {
+                return;
+            }
+
+            _settings.OpenSetupAtStartup = value;
+            _settingsStore.Save(_settings);
+            OnPropertyChanged();
+        }
+    }
+
     public async Task RefreshAsync()
     {
         IsWorking = true;
@@ -206,12 +226,13 @@ public sealed partial class SetupViewModel : ObservableObject
         IsWorking = true;
         try
         {
-            if (await _data.OriginAsync().ConfigureAwait(true) is { } origin
-                && SetupChecks.RepositoryName(origin) != SetupChecks.RepositoryName(url))
+            var origin = await _data.OriginAsync().ConfigureAwait(true);
+            if (SetupChecks.NeedsSetAside(_data.IsCloned, origin, url))
             {
+                var current = origin is null ? "the current data repository" : SetupChecks.RepositoryName(origin);
                 if (MessageBox.Show(
-                        $"DailyDocket will use {SetupChecks.RepositoryName(url)} instead of {SetupChecks.RepositoryName(origin)}. The copy of "
-                        + $"{SetupChecks.RepositoryName(origin)} on this computer is moved aside, not deleted. Continue?",
+                        $"DailyDocket will use {SetupChecks.RepositoryName(url)} instead of {current}. The copy of "
+                        + $"{current} on this computer is moved aside, not deleted. Continue?",
                         AppInfo.ProductName, MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
                 {
                     return;

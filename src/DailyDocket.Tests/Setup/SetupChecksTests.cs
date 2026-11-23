@@ -159,6 +159,25 @@ public sealed class SetupChecksTests : IDisposable
     }
 
     [Fact]
+    public async Task An_ssh_key_GitHub_refuses_is_named_not_reported_as_offline()
+    {
+        var items = await Check(new FakeRunner(("auth status", Ok(SignedIn)), ("ls-remote", Fail("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository."))), All);
+
+        Row(items, SetupStep.GitHub).NeedsAttention.ShouldBeTrue();
+        Row(items, SetupStep.GitHub).Detail.ShouldContain("SSH key");
+        Row(items, SetupStep.GitHub).Detail.ShouldContain("https://github.com/someone/Docket-Data.git");
+    }
+
+    [Theory]
+    [InlineData(true, "https://github.com/someone/Docket-Data.git", "someone/docket-data", false)]
+    [InlineData(true, "git@github.com:someone/Docket-Data.git", "https://github.com/someone/Docket-Data", false)]
+    [InlineData(true, "https://github.com/someone/Docket-Data.git", "other/Docket-Data", true)]
+    [InlineData(true, null, "someone/Docket-Data", true)]
+    [InlineData(false, null, "someone/Docket-Data", false)]
+    public void A_change_moves_the_clone_aside_unless_it_is_the_same_repository(bool cloned, string? origin, string typed, bool expected) =>
+        SetupChecks.NeedsSetAside(cloned, origin, SetupChecks.NormalizeRepositoryUrl(typed)!).ShouldBe(expected);
+
+    [Fact]
     public async Task A_readable_repository_not_yet_here_offers_Download()
     {
         var items = await Check(new FakeRunner(("auth status", Ok(SignedIn))), All);

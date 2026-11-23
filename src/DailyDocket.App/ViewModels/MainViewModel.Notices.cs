@@ -8,7 +8,7 @@ namespace DailyDocket.App.ViewModels;
 public sealed partial class MainViewModel
 {
     /// <summary>The tabs in the window's order, for <see cref="SelectedTab"/>.</summary>
-    private const int ScheduleTab = 0, EmailTab = 2, SlackTab = 3;
+    private const int ScheduleTab = 0, EmailTab = 1, SlackTab = 2;
 
     private IReadOnlySet<string>? _noticed;
 

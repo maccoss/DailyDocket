@@ -162,7 +162,10 @@ public sealed class SetupChecks
         }
 
         var gh = _find(Tool.GitHubCli);
-        var read = await _runner.RunAsync(git, ["ls-remote", "--quiet", url, "HEAD"], timeout: Timeout,
+        // BatchMode: over ssh, a missing key or an unknown host fails at once instead of waiting
+        // for an answer nobody can type.
+        var read = await _runner.RunAsync(git, ["ls-remote", "--quiet", url, "HEAD"],
+            environment: new Dictionary<string, string?> { ["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes" }, timeout: Timeout,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (read.Succeeded)
         {
@@ -171,6 +174,17 @@ public sealed class SetupChecks
         }
 
         var error = read.ErrorText;
+
+        // An ssh address goes past gh's sign-in entirely: it needs a key GitHub knows. Said
+        // plainly, rather than as GitHub being unreachable (code review, November 2026).
+        if (error.Contains("Permission denied (publickey)", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("Host key verification failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(SetupStep.GitHub, title, false,
+                $"GitHub did not accept this computer's SSH key for {RepositoryName(url)}. Add an SSH key to your GitHub account, "
+                + $"or use the https address (https://github.com/{RepositoryName(url)}.git) under Which data repository.");
+        }
+
         var refused = IsSignInRejected(error);
         var notFound = error.Contains("not found", StringComparison.OrdinalIgnoreCase);
         if (!refused && !notFound)
@@ -302,6 +316,21 @@ public sealed class SetupChecks
             }
         }
     }
+
+    /// <summary>
+    /// Whether changing to <paramref name="newUrl"/> means the clone here must be moved aside: it is
+    /// another repository, or one whose address cannot be read (no origin), which may be anything.
+    /// </summary>
+    /// <remarks>
+    /// A clone with no readable origin was once kept, so the setting named the new repository while
+    /// the app went on using the old one and Setup called it ready (code review, November 2026).
+    /// </remarks>
+    public static bool NeedsSetAside(bool isCloned, string? origin, string newUrl) =>
+        isCloned && (origin is null || !SameRepository(origin, newUrl));
+
+    /// <summary>The same GitHub repository, however it is written (https or ssh, with or without .git).</summary>
+    public static bool SameRepository(string a, string b) =>
+        string.Equals(RepositoryName(a), RepositoryName(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A GitHub address in a form a person can check: owner/name.</summary>
     public static string RepositoryName(string url)

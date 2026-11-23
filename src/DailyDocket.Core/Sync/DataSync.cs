@@ -35,6 +35,9 @@ public sealed class DataSync
 
     public DataSync(IProcessRunner runner, ToolLocator tools, string repositoryPath, string machine, ILogger<DataSync>? log = null)
     {
+        // Without a trailing separator: the clone and set-aside folders are named by appending to
+        // this path, and a path ending in a backslash would put them inside the folder (code review, November 2026).
+        repositoryPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryPath));
         _git = new GitClient(runner, tools) { RepositoryPath = repositoryPath };
         _machine = machine;
         _log = log ?? (ILogger)NullLogger.Instance;
@@ -46,6 +49,11 @@ public sealed class DataSync
     public bool IsCloned => Directory.Exists(Path.Combine(RepositoryPath, ".git"));
 
     /// <summary>Clones <paramref name="url"/> into the repository folder if it is not there yet.</summary>
+    /// <remarks>
+    /// Under the gate, so a second caller (Setup's Download while the startup clone is still
+    /// running) waits and then finds the clone, instead of deleting the first one's folder
+    /// (code review, November 2026).
+    /// </remarks>
     public async Task<string?> EnsureClonedAsync(string url, CancellationToken cancellationToken = default)
     {
         if (IsCloned)
@@ -53,11 +61,37 @@ public sealed class DataSync
             return null;
         }
 
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return IsCloned ? null : await CloneAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A file held open (antivirus scanning the new clone, an indexer) must come back as a
+            // problem to show, not end the caller's task without a word.
+            _log.LogWarning(e, "The data repository could not be put in place");
+            return $"DailyDocket could not put your data repository in {RepositoryPath}: {e.Message} Close anything using that folder, then press Refresh.";
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<string?> CloneAsync(string url, CancellationToken cancellationToken)
+    {
         var parent = Path.GetDirectoryName(RepositoryPath)!;
         Directory.CreateDirectory(parent);
+
+        // Files here without a clone are the app's own, written while there was none (a to-do, a
+        // verdict or a brief after the repository was changed). Moved aside, never deleted, so the
+        // clone can go in; refusing left the folder blocked for good (code review, November 2026).
         if (Directory.Exists(RepositoryPath) && Directory.EnumerateFileSystemEntries(RepositoryPath).Any())
         {
-            return $"{RepositoryPath} already has files but is not a git clone. Move them aside so DailyDocket can clone your data repository there.";
+            var loose = $"{RepositoryPath}.before-clone-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}";
+            Directory.Move(RepositoryPath, loose);
+            _log.LogInformation("Moved files written before the clone to {Folder}", loose);
         }
 
         // Cloned beside the folder and moved into place only once complete: a clone cut off partway
@@ -128,10 +162,14 @@ public sealed class DataSync
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Commits on no remote branch at all: unlike origin/main..HEAD, this still counts them
+            // when origin/main does not exist yet (an empty repository never pushed to). With no
+            // commits at all, HEAD does not resolve and there is nothing to lose.
             var status = await _git.RunAsync(["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
-            var ahead = await _git.RunAsync(["rev-list", "--count", "origin/main..HEAD"], cancellationToken).ConfigureAwait(false);
+            var hasCommits = (await _git.RunAsync(["rev-parse", "--verify", "--quiet", "HEAD"], cancellationToken).ConfigureAwait(false)).Succeeded;
+            var unsent = await _git.RunAsync(["rev-list", "--count", "HEAD", "--not", "--remotes"], cancellationToken).ConfigureAwait(false);
             if (!status.Succeeded || status.StandardOutput.Trim().Length > 0
-                || (ahead.Succeeded && ahead.StandardOutput.Trim() != "0"))
+                || (hasCommits && (!unsent.Succeeded || unsent.StandardOutput.Trim() != "0")))
             {
                 return "The current data repository has changes that are not on GitHub yet. Press Refresh while online so they are sent, then change the repository.";
             }

@@ -22,6 +22,9 @@
             <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" />
         </DockPanel>
 
+        <CheckBox DockPanel.Dock="Bottom" Margin="0,12,0,0" IsChecked="{Binding OpenAtStartup}"
+                  Content="Open Setup when DailyDocket starts and something is missing" />
+
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="Checking what is installed and signed in. This takes a few seconds." Style="{StaticResource Muted}" Margin="0,10"
