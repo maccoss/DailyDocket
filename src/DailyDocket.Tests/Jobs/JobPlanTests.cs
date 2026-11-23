@@ -122,6 +122,57 @@ public sealed class JobPlanTests
         }
     }
 
+    [Fact]
+    public async Task A_capturing_run_refuses_to_start_without_the_hook()
+    {
+        var dir = Directory.CreateTempSubdirectory("dd-nohook-").FullName;
+        try
+        {
+            var tools = new ToolLocator();
+            var store = new RecordingStore();
+            var runner = new JobRunner(tools, new ProcessRunner(tools), new AppPaths(dir), store, Fixture.Config, Path.Combine(dir, "missing", "DailyDocket.Hook.exe"));
+
+            var outcome = await runner.RunAsync(JobPlans.CalendarPull(Fixture.Config(), Now, Fixture.Pacific, "haiku"));
+
+            outcome.Ok.ShouldBeFalse();
+            outcome.Detail.ShouldNotBeNull().ShouldContain("DailyDocket.Hook.exe is missing");
+            store.Finished.ShouldBe("failed");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private sealed class RecordingStore : IJobStore
+    {
+        public string? Finished { get; private set; }
+
+        public int IngestFolder(string runId, string folder) => 0;
+
+        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max) => [];
+
+        public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max) => [];
+
+        public void RecordVerdict(string source, string key, string forMessage, bool needsReply, string why)
+        {
+        }
+
+        public string? Watermark(string source, string scope) => null;
+
+        public void SetWatermark(string source, string scope, string value)
+        {
+        }
+
+        public void StartRun(string id, string job, DateTimeOffset at)
+        {
+        }
+
+        public void FinishRun(string id, string? sessionId, string outcome, string? detail, double? costUsd) => Finished = outcome;
+
+        public int PurgeCaptures(DateTimeOffset now) => 0;
+    }
+
     [Theory]
     [InlineData("OAuth session expired and could not be refreshed", "claude auth login --claudeai")]
     [InlineData("Reached max turns (120)", "step limit")]

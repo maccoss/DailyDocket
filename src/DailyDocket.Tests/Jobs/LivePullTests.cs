@@ -27,7 +27,9 @@ public sealed class LivePullTests(ITestOutputHelper output)
         var root = Directory.CreateTempSubdirectory("dd-live-").FullName;
         var paths = new AppPaths(root);
         paths.EnsureCreated();
-        var hook = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "DailyDocket.Hook", "bin", "Debug", "net10.0", "DailyDocket.Hook.exe"));
+        // The hook is built beside the tests (they reference it), wherever the build output goes.
+        var hook = Path.Combine(AppContext.BaseDirectory, "DailyDocket.Hook.exe");
+        File.Exists(hook).ShouldBeTrue($"the hook should be built beside the tests at {hook}");
 
         var db = DocketDatabase.Open(paths.DatabaseFile, "live-test");
         var store = new Store(db);

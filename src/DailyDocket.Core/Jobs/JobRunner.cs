@@ -68,6 +68,13 @@ public sealed class JobRunner
         string? finalText = null;
         try
         {
+            // Without the hook a run still "succeeds" but saves nothing (seen when a test pointed at
+            // a hook that was not built): refuse up front, in words the user can act on.
+            if ((plan.Capture || plan.Claims is not null) && !File.Exists(_hookPath))
+            {
+                throw new FileNotFoundException($"DailyDocket.Hook.exe is missing ({_hookPath}), so the {plan.Job} sync cannot save what it reads. Reinstall DailyDocket.");
+            }
+
             var context = new RunContext(_store, _config, runId, captures);
             var tools = new AppTools { Run = context };
             await using var server = await AppToolServer.StartAsync(tools, cancellationToken).ConfigureAwait(false);
@@ -138,6 +145,10 @@ public sealed class JobRunner
             failure = e.Message;
         }
         catch (TimeoutException e)
+        {
+            failure = e.Message;
+        }
+        catch (FileNotFoundException e)
         {
             failure = e.Message;
         }
