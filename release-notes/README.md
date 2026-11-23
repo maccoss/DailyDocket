@@ -16,7 +16,7 @@ Examples: `26.1.0` (first feature release of 2026), `26.1.1` (patch), `26.2.0` (
 
 The version lives in exactly one place, `<Version>` in `Directory.Build.props`, and is bumped only
 at release time, not during development. `release.yml` refuses to publish when the tag disagrees
-with it. `26.0.0` marks the unreleased scaffold; the first release will be `26.1.0`.
+with it. The first release was `26.1.0` (November 2026).
 
 ## File Format
 
