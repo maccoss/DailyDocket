@@ -2,6 +2,7 @@ using System.Text.Json;
 using Dapper;
 using DailyDocket.Core.Calendar;
 using DailyDocket.Core.Configuration;
+using DailyDocket.Core.Jobs;
 using DailyDocket.Core.Mail;
 using DailyDocket.Core.Slack;
 using Microsoft.Data.Sqlite;
@@ -15,10 +16,6 @@ public sealed record MailRow(
 
 /// <summary>A conversation on the Slack tab.</summary>
 public sealed record SlackRow(string Key, string State, string From, string Where, bool IsDm, string Text, DateTimeOffset When, string? Why, string? Permalink);
-
-/// <summary>An item waiting for Claude's verdict.</summary>
-/// <param name="ForMessage">The newest message the verdict will be kept against.</param>
-public sealed record TriageItem(string Source, string Key, string ForMessage, string Transcript);
 
 /// <summary>How many items the tabs hide, and why, so the rules stay checkable.</summary>
 public sealed record MailCounts(int Owed, int Reading, int Quiet);

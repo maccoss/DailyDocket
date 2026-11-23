@@ -36,6 +36,12 @@ public sealed class GmailParserTests
         messages[2].Labels.ShouldContain("UNREAD");
         messages[2].Body.ShouldStartWith("Thanks. One more thing");
     }
+
+    [Fact]
+    public void A_bare_sender_address_gets_its_display_name()
+    {
+        GmailParser.ParseThread(Fixture.Read("gmail-thread.json")).Messages[1].Sender.ShouldBe("Owner Person <owner@example.org>");
+    }
 }
 
 public sealed class MailRulesTests

@@ -85,7 +85,7 @@ public static class GmailParser
                 messages.Add(new MailMessage(
                     id,
                     Str(m, "threadId") ?? threadId ?? "",
-                    Str(m, "sender") ?? "",
+                    Named(Str(m, "sender") ?? "", m),
                     Strings(m, "toRecipients"),
                     Strings(m, "ccRecipients"),
                     MessageDate(m),
@@ -116,6 +116,28 @@ public static class GmailParser
         }
 
         return drafts;
+    }
+
+    /// <summary>
+    /// The sender as "Name &lt;address&gt;". A thread read gives the bare address as sender and the
+    /// names separately (addressDisplayNames), so the tab can say who is waiting.
+    /// </summary>
+    private static string Named(string sender, JsonElement m)
+    {
+        if (sender.Contains('<', StringComparison.Ordinal) || !m.TryGetProperty("addressDisplayNames", out var names) || names.ValueKind != JsonValueKind.Array)
+        {
+            return sender;
+        }
+
+        foreach (var n in names.EnumerateArray())
+        {
+            if (string.Equals(Str(n, "emailAddress"), sender, StringComparison.OrdinalIgnoreCase) && Str(n, "displayName") is { Length: > 0 } name)
+            {
+                return $"{name} <{sender}>";
+            }
+        }
+
+        return sender;
     }
 
     /// <summary>internalDate (milliseconds since 1970) is exact; the date header is the fallback.</summary>
