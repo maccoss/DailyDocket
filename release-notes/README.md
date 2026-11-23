@@ -92,7 +92,7 @@ Sections can be omitted if empty. For patch releases, a flat list is sufficient.
 3. Commit and push to `main`, and let CI go green (both the x64 and the ARM64 job)
 4. Tag: `git tag -a v{version} -m "DailyDocket {version}"`
 5. Push the tag: `git push origin v{version}`. **Pushing the tag both builds the installers and
-   creates the GitHub Release** (`.github/workflows/release.yml`, added with the app). Do not
+   creates the GitHub Release** (`.github/workflows/release.yml`). Do not
    hand-create the Release.
 
 A tag containing `alpha`, `beta`, or `rc` is published as a GitHub prerelease. A tag containing

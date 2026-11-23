@@ -55,8 +55,9 @@ impact first, empty headings deleted at release.
 - **Setup.** Personal details (addresses, Slack id, calendars, extra machine senders) were read
   from `%LOCALAPPDATA%\DailyDocket\docket.yaml`; `docs/docket.example.yaml` shows the format. A
   banner said what was missing, including when Claude Code needed `claude auth login --claudeai`.
-- **Installer and updates.** DailyDocket installed from `DailyDocket-win-x64-Setup.exe` or
-  `DailyDocket-win-arm64-Setup.exe` on the GitHub Release, with no administrator rights, and kept
+- **Installer and updates.** DailyDocket installed from `MacCoss.DailyDocket-win-x64-Setup.exe` or
+  `MacCoss.DailyDocket-win-arm64-Setup.exe` (for ARM64 computers such as the Surface) on the GitHub
+  Release, with no administrator rights, and kept
   itself up to date: it looked for a new release at startup and every four hours, downloaded it in
   the background, and showed "Update ready: restart to install" with **Restart** above the status
   line. It never restarted by itself, waited for a reply that was mid-send, and stayed quiet when
