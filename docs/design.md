@@ -276,7 +276,7 @@ Build order, each phase usable on its own:
 - **`updatedToolOutput` replaces the result.** Claude received only the receipt and the thread and message ids, never the mail.
 - **The `PreToolUse` guard denies before the allowlist check.** Claude received "DailyDocket send guard: no outbox item is claimed in this run" for `create_draft`; no draft was made.
 - **`claude.exe` is x64 here**, native.
-- **The CLI keeps its own login**, separate from the desktop app's: `claude auth login --claudeai` once per machine. Setup should check `claude auth status` and offer sign-in.
+- **The CLI keeps its own login**, separate from the desktop app's: `claude auth login --claudeai` once per machine. Setup (LabOps' checklist, cut down) checks `claude auth status` and signs in through the browser with no console; it also installs Claude Code and Git, gets git a GitHub sign-in through gh (judged by whether git can read the data repository, not by gh's own status), downloads the data repository, and can switch to another one, moving the old clone aside only when everything in it is on GitHub.
 - **Run folders must be outside any repository.** Claude Code walks up from its working folder for `CLAUDE.md`; a run under `spike/out` read this repo's and was confused by it. `%LOCALAPPDATA%\DailyDocket\runs` meets this.
 - **Launch with the parent's `CLAUDE*` and `ANTHROPIC*` variables removed**, so a DailyDocket started from inside a Claude session does not inherit host auth or session state.
 

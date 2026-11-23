@@ -54,22 +54,14 @@ from the latest [release](https://github.com/maccoss/DailyDocket/releases) and r
 checks for updates at startup and every four hours, downloads them in the background, and offers a
 **Restart** button; it never restarts by itself.
 
-Then, once per computer:
+On first start, **Setup** opens and walks through what the computer still needs, one button per
+step: installing Claude Code (Anthropic's installer) and signing in to it, installing Git (winget),
+signing in to GitHub so git can download the data repository, and downloading it. Sign-ins open
+the browser; the app never handles a password. Claude Code keeps its own sign-in, separate from the
+Claude desktop app's. Setup stays a button beside **Refresh** for later.
 
-```powershell
-irm https://claude.ai/install.ps1 | iex
-```
-
-```powershell
-claude auth login --claudeai
-```
-
-```powershell
-winget install --id Git.Git --exact --source winget
-```
-
-The window's banner says which of these is still missing. Claude Code keeps its own sign-in,
-separate from the Claude desktop app's.
+To keep your own docket rather than the owner's, make an empty private repository on GitHub and
+enter it in Setup's **Which data repository** box, then add your `config/docket.yaml` to it.
 
 ## Building from source
 

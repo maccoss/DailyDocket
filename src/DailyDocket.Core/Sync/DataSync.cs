@@ -60,14 +60,99 @@ public sealed class DataSync
             return $"{RepositoryPath} already has files but is not a git clone. Move them aside so DailyDocket can clone your data repository there.";
         }
 
-        var result = await new GitClientAt(_git, parent).RunAsync(["clone", url, RepositoryPath], cancellationToken).ConfigureAwait(false);
+        // Cloned beside the folder and moved into place only once complete: a clone cut off partway
+        // (the app closed, the computer slept) left a .git folder with no commits, which IsCloned
+        // took for a finished clone, and every sync after it failed (November 2026).
+        var partial = RepositoryPath + ".cloning";
+        DeleteFolder(partial);
+        var result = await new GitClientAt(_git, parent).RunAsync(["clone", url, partial], cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded)
         {
-            return $"DailyDocket could not clone {url}: {FirstLine(result.ErrorText)} Check that you are signed in to GitHub (gh auth login) and can open the repository.";
+            DeleteFolder(partial);
+            return $"DailyDocket could not clone {url}: {FirstLine(result.ErrorText)} Open Setup and complete the GitHub step.";
         }
 
+        if (Directory.Exists(RepositoryPath))
+        {
+            Directory.Delete(RepositoryPath);
+        }
+
+        Directory.Move(partial, RepositoryPath);
         await _git.RunAsync(["config", "pull.rebase", "true"], cancellationToken).ConfigureAwait(false);
         return null;
+    }
+
+    /// <summary>Deletes a folder git wrote, including its read-only object files.</summary>
+    private static void DeleteFolder(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        Directory.Delete(path, recursive: true);
+    }
+
+    /// <summary>The address the clone came from, or null when there is no clone or no origin.</summary>
+    public async Task<string?> OriginAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsCloned)
+        {
+            return null;
+        }
+
+        var result = await _git.RunAsync(["remote", "get-url", "origin"], cancellationToken).ConfigureAwait(false);
+        return result.Succeeded ? result.StandardOutput.Trim() : null;
+    }
+
+    /// <summary>
+    /// Moves the clone aside, to <c>{folder}.previous-{time}</c>, so a different data repository can
+    /// be cloned in its place. Returns why it could not, or null when it did.
+    /// </summary>
+    /// <remarks>
+    /// Only when everything in it is on GitHub: a change still on this computer would be left in a
+    /// folder nobody looks at. The folder is renamed, not deleted, so nothing is lost either way.
+    /// </remarks>
+    public async Task<string?> SetAsideAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsCloned)
+        {
+            return null;
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var status = await _git.RunAsync(["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
+            var ahead = await _git.RunAsync(["rev-list", "--count", "origin/main..HEAD"], cancellationToken).ConfigureAwait(false);
+            if (!status.Succeeded || status.StandardOutput.Trim().Length > 0
+                || (ahead.Succeeded && ahead.StandardOutput.Trim() != "0"))
+            {
+                return "The current data repository has changes that are not on GitHub yet. Press Refresh while online so they are sent, then change the repository.";
+            }
+
+            var target = $"{RepositoryPath}.previous-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}";
+            try
+            {
+                Directory.Move(RepositoryPath, target);
+            }
+            catch (IOException e)
+            {
+                return $"The current data repository could not be moved aside ({e.Message}). Close anything that has a file in {RepositoryPath} open, then try again.";
+            }
+
+            _log.LogInformation("Moved the data repository aside to {Folder}", target);
+            return null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Commits whatever changed, then rebases onto the remote and pushes.</summary>

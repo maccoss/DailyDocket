@@ -223,31 +223,50 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            if (!_book.Sync.IsCloned && _settings.DataRepositoryUrl.Length > 0)
-            {
-                _dataProblem = await _book.Sync.EnsureClonedAsync(_settings.DataRepositoryUrl, _stop.Token);
-                if (_config.AdoptIntoRepository())
-                {
-                    _log.LogInformation("Moved docket.yaml into the data repository");
-                }
-            }
-
-            if (_book.Sync.IsCloned)
-            {
-                await _book.SyncNowAsync(_stop.Token);
-            }
+            await ConnectDataAsync();
         }
         catch (OperationCanceledException)
         {
-            return;
+        }
+    }
+
+    private bool _timerStarted;
+
+    /// <summary>
+    /// Clones the data repository if it is not here yet, brings its changes in, and starts the
+    /// timer once the owner's details are there. Setup calls it again after a sign-in or a change
+    /// of repository, so neither needs a restart. Returns why the clone failed, or null.
+    /// </summary>
+    public async Task<string?> ConnectDataAsync()
+    {
+        if (!_book.Sync.IsCloned && _settings.DataRepositoryUrl.Length > 0)
+        {
+            _dataProblem = await _book.Sync.EnsureClonedAsync(_settings.DataRepositoryUrl, _stop.Token);
+            if (_config.AdoptIntoRepository())
+            {
+                _log.LogInformation("Moved docket.yaml into the data repository");
+            }
         }
 
-        OnUi(Reload);
-        if (_config.IsComplete)
+        if (_book.Sync.IsCloned)
         {
+            _book.Reload();
+            await _book.SyncNowAsync(_stop.Token);
+        }
+
+        OnUi(() =>
+        {
+            Todos.Refresh();
+            Reload();
+        });
+        if (_config.IsComplete && !_timerStarted)
+        {
+            _timerStarted = true;
             _ = RunTimerAsync();
             StartShared();
         }
+
+        return _dataProblem;
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]

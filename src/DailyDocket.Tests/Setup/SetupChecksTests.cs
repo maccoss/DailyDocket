@@ -5,10 +5,24 @@ using DailyDocket.Core.Updates;
 
 namespace DailyDocket.Tests.Setup;
 
-public sealed class SetupChecksTests
+public sealed class SetupChecksTests : IDisposable
 {
-    /// <summary>Answers every command with one canned result, and records what was run.</summary>
-    private sealed class FakeRunner(ProcessResult result) : IProcessRunner
+    private const string Url = "https://github.com/someone/Docket-Data.git";
+    private const string SignedIn = """{"loggedIn": true, "authMethod": "claude.ai", "email": "someone@example.org"}""";
+    private const string SignedOut = """{"loggedIn": false}""";
+
+    private readonly string _repo = Path.Combine(Path.GetTempPath(), $"dd-setup-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_repo))
+        {
+            Directory.Delete(_repo, recursive: true);
+        }
+    }
+
+    /// <summary>Answers each command by its first matching rule (a piece of the command line), and records what was run.</summary>
+    private sealed class FakeRunner(params (string Contains, ProcessResult Result)[] rules) : IProcessRunner
     {
         public List<string> Commands { get; } = [];
 
@@ -16,68 +30,175 @@ public sealed class SetupChecksTests
             IReadOnlyDictionary<string, string?>? environment = null, TimeSpan? timeout = null,
             CancellationToken cancellationToken = default, Action<string>? onLine = null)
         {
-            Commands.Add($"{fileName} {string.Join(' ', arguments)}");
-            return Task.FromResult(result);
+            var line = $"{fileName} {string.Join(' ', arguments)}";
+            Commands.Add(line);
+            var match = rules.FirstOrDefault(r => line.Contains(r.Contains, StringComparison.Ordinal));
+            return Task.FromResult(match.Result ?? new ProcessResult(0, "", ""));
         }
     }
+
+    private static ProcessResult Ok(string output = "") => new(0, output, "");
+
+    private static ProcessResult Fail(string error) => new(128, "", error);
 
     private static Func<Tool, string?> Installed(params Tool[] tools) =>
         tool => tools.Contains(tool) ? $@"C:\tools\{tool}.exe" : null;
 
-    private const string SignedIn = """{"loggedIn": true, "authMethod": "claude.ai", "email": "someone@example.org"}""";
-    private const string SignedOut = """{"loggedIn": false}""";
+    private static readonly Tool[] All = [Tool.Claude, Tool.Git, Tool.GitHubCli];
+
+    private void Clone() => Directory.CreateDirectory(Path.Combine(_repo, ".git"));
+
+    private async Task<IReadOnlyList<SetupItem>> Check(FakeRunner runner, params Tool[] tools) =>
+        await new SetupChecks(runner, Installed(tools)).CheckAsync(Url, _repo);
+
+    private static SetupItem Row(IReadOnlyList<SetupItem> items, SetupStep step) => items.Single(i => i.Step == step);
 
     [Fact]
-    public async Task Nothing_is_reported_when_everything_is_in_place()
+    public async Task Nothing_needs_attention_when_everything_is_in_place()
     {
-        var runner = new FakeRunner(new ProcessResult(0, SignedIn, ""));
-        var problems = await new SetupChecks(runner, Installed(Tool.Claude, Tool.Git)).CheckAsync();
+        Clone();
+        var runner = new FakeRunner(("auth status", Ok(SignedIn)), ("user.name", Ok("Someone\n")));
+        var items = await Check(runner, All);
 
-        problems.ShouldBeEmpty();
-        SetupChecks.Describe(problems).ShouldBeNull();
-        runner.Commands.ShouldBe([@"C:\tools\Claude.exe auth status"]);
+        items.ShouldAllBe(i => i.Done);
+        SetupChecks.AllDone(items).ShouldBeTrue();
+        SetupChecks.Describe(items).ShouldBeNull();
+        Row(items, SetupStep.ClaudeSignIn).Detail.ShouldContain("someone@example.org");
+        Row(items, SetupStep.ClaudeSignIn).AlternateLabel.ShouldBe("Sign in again");
+        runner.Commands.ShouldContain(@$"C:\tools\Git.exe ls-remote --quiet {Url} HEAD");
     }
 
     [Fact]
-    public async Task A_missing_Claude_Code_says_how_to_install_it_and_skips_the_sign_in_check()
+    public async Task A_missing_Claude_Code_offers_Anthropics_installer_and_skips_the_sign_in_check()
     {
-        var runner = new FakeRunner(new ProcessResult(0, SignedIn, ""));
-        var problems = await new SetupChecks(runner, Installed(Tool.Git)).CheckAsync();
+        Clone();
+        var runner = new FakeRunner(("user.name", Ok("Someone")));
+        var checks = new SetupChecks(runner, Installed(Tool.Git));
+        var items = await checks.CheckAsync(Url, _repo);
 
-        problems.ShouldBe([SetupChecks.ClaudeMissing]);
-        problems[0].ShouldContain("install.ps1");
-        runner.Commands.ShouldBeEmpty();
+        Row(items, SetupStep.Claude).Fix.ShouldBe(SetupFix.InstallClaude);
+        Row(items, SetupStep.ClaudeSignIn).Unsure.ShouldBeTrue();
+        runner.Commands.ShouldNotContain(c => c.Contains("auth status"));
+        string.Join(' ', checks.ConsoleFix(SetupFix.InstallClaude)!.Arguments).ShouldContain("irm https://claude.ai/install.ps1 | iex");
+        SetupChecks.Describe(items).ShouldBe("This computer is not fully set up (Claude Code). Press Setup to finish.");
     }
 
     [Fact]
-    public async Task Signed_out_suggests_the_claude_ai_login()
+    public async Task Signed_out_offers_the_claude_ai_sign_in()
     {
-        // claude auth status exits 1 when signed out, and still prints its JSON.
-        var runner = new FakeRunner(new ProcessResult(1, SignedOut, ""));
-        var problems = await new SetupChecks(runner, Installed(Tool.Claude, Tool.Git)).CheckAsync();
+        Clone();
+        var checks = new SetupChecks(new FakeRunner(("auth status", new ProcessResult(1, SignedOut, "")), ("user.name", Ok("Someone"))), Installed(All));
+        var items = await checks.CheckAsync(Url, _repo);
 
-        problems.ShouldBe([SetupChecks.ClaudeSignedOut]);
-        problems[0].ShouldContain("claude auth login --claudeai");
+        Row(items, SetupStep.ClaudeSignIn).Fix.ShouldBe(SetupFix.SignInToClaude);
+        Row(items, SetupStep.ClaudeSignIn).NeedsAttention.ShouldBeTrue();
+        string.Join(' ', checks.ConsoleFix(SetupFix.SignInToClaude)!.Arguments).ShouldContain("auth login --claudeai");
     }
 
     [Fact]
     public async Task A_status_that_cannot_be_read_is_not_reported_as_signed_out()
     {
-        var runner = new FakeRunner(new ProcessResult(-1, "", "claude did not finish within 00:00:30."));
-        var problems = await new SetupChecks(runner, Installed(Tool.Claude, Tool.Git)).CheckAsync();
+        Clone();
+        var items = await Check(new FakeRunner(("auth status", new ProcessResult(-1, "", "claude did not finish within 00:00:30.")), ("user.name", Ok("Someone"))), All);
 
-        problems.ShouldBeEmpty();
+        Row(items, SetupStep.ClaudeSignIn).Unsure.ShouldBeTrue();
+        SetupChecks.Describe(items).ShouldBeNull();
     }
 
     [Fact]
-    public async Task Missing_git_is_reported_with_its_install_command_after_Claude()
+    public async Task Missing_git_offers_winget_and_leaves_the_GitHub_check_for_later()
     {
-        var runner = new FakeRunner(new ProcessResult(1, SignedOut, ""));
-        var problems = await new SetupChecks(runner, Installed(Tool.Claude)).CheckAsync();
+        var checks = new SetupChecks(new FakeRunner(("auth status", Ok(SignedIn))), Installed(Tool.Claude));
+        var items = await checks.CheckAsync(Url, _repo);
 
-        problems.ShouldBe([SetupChecks.ClaudeSignedOut, SetupChecks.GitMissing]);
-        problems[1].ShouldContain("winget install --id Git.Git");
-        SetupChecks.Describe(problems).ShouldBe($"{SetupChecks.ClaudeSignedOut} {SetupChecks.GitMissing}");
+        Row(items, SetupStep.Git).Fix.ShouldBe(SetupFix.InstallGit);
+        Row(items, SetupStep.GitHub).Unsure.ShouldBeTrue();
+        string.Join(' ', checks.ConsoleFix(SetupFix.InstallGit)!.Arguments).ShouldContain("winget install --id Git.Git --exact --source winget");
+    }
+
+    [Fact]
+    public async Task A_refused_read_without_gh_offers_to_install_it()
+    {
+        var items = await Check(new FakeRunner(("auth status", Ok(SignedIn)), ("ls-remote", Fail("fatal: could not read Username for 'https://github.com': terminal prompts disabled"))),
+            Tool.Claude, Tool.Git);
+
+        Row(items, SetupStep.GitHub).Fix.ShouldBe(SetupFix.InstallGitHubCli);
+        Row(items, SetupStep.DataRepository).CanFix.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_refused_read_with_gh_signed_out_offers_the_GitHub_sign_in()
+    {
+        var runner = new FakeRunner(("Claude.exe auth status", Ok(SignedIn)), ("ls-remote", Fail("remote: Repository not found.")),
+            ("GitHubCli.exe auth status", Fail("You are not logged into any GitHub hosts.")));
+        var checks = new SetupChecks(runner, Installed(All));
+        var items = await checks.CheckAsync(Url, _repo);
+
+        Row(items, SetupStep.GitHub).Fix.ShouldBe(SetupFix.SignInToGitHub);
+        string.Join(' ', checks.ConsoleFix(SetupFix.SignInToGitHub)!.Arguments).ShouldContain("auth setup-git");
+    }
+
+    [Fact]
+    public async Task A_refused_read_with_gh_signed_in_offers_Connect()
+    {
+        var items = await Check(new FakeRunner(("ls-remote", Fail("fatal: Authentication failed for 'https://github.com/someone/Docket-Data.git/'")),
+            ("auth status", Ok(SignedIn))), All);
+
+        Row(items, SetupStep.GitHub).Fix.ShouldBe(SetupFix.ConnectGit);
+        Row(items, SetupStep.GitHub).Alternate.ShouldBe(SetupFix.SignInToGitHub);
+    }
+
+    [Fact]
+    public async Task Offline_is_not_reported_as_missing()
+    {
+        var items = await Check(new FakeRunner(("auth status", Ok(SignedIn)),
+            ("ls-remote", Fail("fatal: unable to access 'https://github.com/someone/Docket-Data.git/': Could not resolve host: github.com"))), All);
+
+        Row(items, SetupStep.GitHub).Unsure.ShouldBeTrue();
+        Row(items, SetupStep.GitHub).NeedsAttention.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_readable_repository_not_yet_here_offers_Download()
+    {
+        var items = await Check(new FakeRunner(("auth status", Ok(SignedIn))), All);
+
+        Row(items, SetupStep.DataRepository).Fix.ShouldBe(SetupFix.DownloadData);
+        Row(items, SetupStep.DataRepository).Detail.ShouldContain("someone/Docket-Data");
+    }
+
+    [Fact]
+    public async Task A_clone_without_a_git_name_offers_the_GitHub_name()
+    {
+        Clone();
+        var items = await Check(new FakeRunner(("auth status", Ok(SignedIn)), ("user.name", new ProcessResult(1, "", ""))), All);
+
+        Row(items, SetupStep.DataRepository).Fix.ShouldBe(SetupFix.SetGitName);
+    }
+
+    [Theory]
+    [InlineData("someone/Docket-Data", "https://github.com/someone/Docket-Data.git")]
+    [InlineData(" https://github.com/someone/Docket-Data ", "https://github.com/someone/Docket-Data")]
+    [InlineData("git@github.com:someone/Docket-Data.git", "git@github.com:someone/Docket-Data.git")]
+    [InlineData("Docket-Data", null)]
+    [InlineData("some one/data", null)]
+    [InlineData("", null)]
+    public void What_is_typed_becomes_an_address_to_clone(string typed, string? expected) =>
+        SetupChecks.NormalizeRepositoryUrl(typed).ShouldBe(expected);
+
+    [Theory]
+    [InlineData("https://github.com/someone/Docket-Data.git", "someone/Docket-Data")]
+    [InlineData("https://github.com/someone/Docket-Data/", "someone/Docket-Data")]
+    [InlineData("git@github.com:someone/Docket-Data.git", "someone/Docket-Data")]
+    public void A_repository_is_named_owner_slash_name(string url, string expected) =>
+        SetupChecks.RepositoryName(url).ShouldBe(expected);
+
+    [Fact]
+    public void The_git_name_uses_GitHubs_private_address()
+    {
+        SetupChecks.ParseGitHubUser("""{"login":"someone","id":42,"name":"Some One"}""").ShouldBe(("Some One", "42+someone@users.noreply.github.com"));
+        SetupChecks.ParseGitHubUser("""{"login":"someone","id":42,"name":null}""").ShouldBe(("someone", "42+someone@users.noreply.github.com"));
+        SetupChecks.ParseGitHubUser("not json").ShouldBeNull();
     }
 
     [Theory]
@@ -89,7 +210,7 @@ public sealed class SetupChecksTests
     [InlineData("[]", null)]
     [InlineData("", null)]
     public void The_status_is_read_from_loggedIn_only(string output, bool? expected) =>
-        SetupChecks.ParseLoggedIn(output).ShouldBe(expected);
+        (SetupChecks.ParseClaudeAuth(output)?.LoggedIn).ShouldBe(expected);
 }
 
 public sealed class UpdatePolicyTests

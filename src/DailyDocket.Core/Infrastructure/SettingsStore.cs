@@ -14,6 +14,9 @@ public sealed class AppSettings
     /// <summary>The private data repository (to-dos, Handled marks, docket.yaml) to clone; empty means none yet.</summary>
     public string DataRepositoryUrl { get; set; } = "https://github.com/maccoss/DailyDocket-Data.git";
 
+    /// <summary>Open Setup at startup when the computer is missing something it needs (the banner says so either way).</summary>
+    public bool OpenSetupAtStartup { get; set; } = true;
+
     /// <summary>Whether email replies end with the Gmail signature set up on the web, as replies written in Gmail do.</summary>
     public bool IncludeSignature { get; set; } = true;
 
