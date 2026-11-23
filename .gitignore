@@ -10,3 +10,6 @@ Releases/
 
 # Spike output can hold real mail; it stays on the machine that made it.
 spike/out/
+
+# Night-session notes and agent status files
+ai/.tmp/
