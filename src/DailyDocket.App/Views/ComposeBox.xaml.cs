@@ -96,6 +96,12 @@ public partial class ComposeBox : UserControl
         _vm?.Send(DocumentConverter.Convert(Editor.Document));
     }
 
+    private void OnSaveToGmail(object sender, RoutedEventArgs e)
+    {
+        _pause.Stop();
+        _vm?.SaveToGmail(DocumentConverter.Convert(Editor.Document));
+    }
+
     /// <summary>Makes the selected text a link to an address the user types.</summary>
     private void OnLink(object sender, RoutedEventArgs e)
     {

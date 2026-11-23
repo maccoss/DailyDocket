@@ -236,6 +236,40 @@ public sealed partial class ComposeViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// Puts the reply in Gmail's drafts instead of sending it, to finish on the phone or in Gmail
+    /// (an attachment, for example). It goes through the outbox like a send, without the undo
+    /// window, since nothing reaches anyone.
+    /// </summary>
+    public bool SaveToGmail(ComposedText content)
+    {
+        if (_item is null || !IsEmail)
+        {
+            return false;
+        }
+
+        AddTo();
+        AddCc();
+        if (NewTo.Trim().Length > 0 || NewCc.Trim().Length > 0)
+        {
+            return false;
+        }
+
+        if (content.IsEmpty)
+        {
+            Note = "Write something before saving it to Gmail.";
+            return false;
+        }
+
+        var draft = Fill(_item, content) with { Kind = OutboxKind.EmailDraft, Status = OutboxStatus.Queued, SendAfter = DateTimeOffset.UtcNow, Problem = null };
+        _outbox.Save(draft);
+        _item = null;
+        IsOpen = false;
+        Note = null;
+        Queued?.Invoke(draft);
+        return true;
+    }
+
     [RelayCommand]
     private void Discard()
     {

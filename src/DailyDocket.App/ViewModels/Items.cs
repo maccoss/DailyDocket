@@ -8,7 +8,10 @@ public sealed record BannerItem(string Title, string Tag, string? Link);
 
 /// <summary>A meeting.</summary>
 /// <param name="Quiet">From a secondary calendar (department events): present, but not his commitment.</param>
-public sealed record EventItem(string Time, string Title, string Tag, string Location, bool Clash, bool NeedsReply, bool Quiet, string? Link);
+/// <param name="CanRespond">An invitation (he is an attendee): Accept, Tentative and Decline apply.</param>
+/// <param name="Response">His response as the calendar last reported it, or the one on its way out.</param>
+public sealed record EventItem(string Time, string Title, string Tag, string Location, bool Clash, bool NeedsReply, bool Quiet, string? Link,
+    string EventId = "", string? CalendarId = null, bool CanRespond = false, string? Response = null);
 
 /// <summary>A thread on the Email tab.</summary>
 /// <param name="Staleness">0 recent, 1 over a month, 2 over three months: the age chip's emphasis.</param>

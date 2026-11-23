@@ -40,6 +40,13 @@ impact first, empty headings deleted at release.
   a reply refused by Gmail or Slack said why. A send could only deliver exactly what was written,
   to exactly the recipients shown, once: the run that sends never reads mail, and a hook refuses
   any other call. Unsent replies were also kept in `outbox.json`.
+- **Accept, Maybe and Decline on the Schedule.** An invitation could be answered from its row; the
+  response waited out the undo window like a reply, showed as "You: accepted (sending)", and went
+  through the same guarded outbox.
+- **Threads marked read in Gmail.** Replying to a thread or marking it **Handled** also marked it
+  read in Gmail (`"MarkReadInGmail"`, on by default), so Gmail no longer showed handled mail as new.
+- **Save to Gmail drafts.** The reply box could put a reply in Gmail's drafts instead of sending it,
+  to finish on the phone or in Gmail.
 - **Draft with Claude.** The reply box's **Draft with Claude** wrote a draft from the conversation,
   in Mike's voice from his recent emails, for him to edit; an optional **Say** line told it what
   the reply should say. It never sent anything and never decided for him: a reply that turned on

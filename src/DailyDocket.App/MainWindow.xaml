@@ -46,6 +46,49 @@
             <TabItem Header="SCHEDULE">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ScheduleSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding ScheduleOutbox}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:OutboxView}">
+                                    <Border CornerRadius="8" BorderThickness="1" Padding="10,8" Margin="0,0,0,8">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CanRetry}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource WarnSoftBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Status}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <Button DockPanel.Dock="Right" Content="Discard" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.DiscardOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Edit" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.EditOutboxCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Send again" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.SendAgainCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <Button DockPanel.Dock="Right" Content="Undo" Style="{StaticResource OpenButton}" Margin="6,0,0,0"
+                                                        Visibility="{Binding CanUndo, Converter={StaticResource BoolToVisibility}}"
+                                                        Command="{Binding DataContext.UndoSendCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Problem}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                                <TextBlock.Visibility>
+                                                    <Binding Path="Problem" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                </TextBlock.Visibility>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Preview}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding Days}">
                             <ItemsControl.ItemTemplate>
@@ -127,9 +170,21 @@
                                                                     <TextBlock Text="{Binding Location}" Style="{StaticResource Muted}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" />
                                                                 </WrapPanel>
                                                             </StackPanel>
-                                                            <Button Grid.Column="2" Content="Open" Style="{StaticResource OpenButton}" VerticalAlignment="Top"
-                                                                    Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Link}"
-                                                                    ToolTip="Open in Google Calendar" />
+                                                            <StackPanel Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Visibility="{Binding CanRespond, Converter={StaticResource BoolToVisibility}}">
+                                                                    <Button Content="Accept" Style="{StaticResource OpenButton}" Margin="0,0,4,0" ToolTip="Accept (you can undo for a minute)"
+                                                                            Command="{Binding DataContext.AcceptEventCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    <Button Content="Maybe" Style="{StaticResource OpenButton}" Margin="0,0,4,0" ToolTip="Tentative"
+                                                                            Command="{Binding DataContext.TentativeEventCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    <Button Content="Decline" Style="{StaticResource OpenButton}" ToolTip="Decline"
+                                                                            Command="{Binding DataContext.DeclineEventCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                </StackPanel>
+                                                                <TextBlock Text="{Binding Response, StringFormat=You: {0}}" Style="{StaticResource Muted}" FontSize="12" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                                                    <TextBlock.Visibility>
+                                                                        <Binding Path="Response" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                                                    </TextBlock.Visibility>
+                                                                </TextBlock>
+                                                            </StackPanel>
                                                         </Grid>
                                                     </Border>
                                                 </DataTemplate>

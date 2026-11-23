@@ -30,6 +30,15 @@ public enum OutboxKind
 
     /// <summary>A Slack message: in a thread when it has one, otherwise in the DM or channel.</summary>
     SlackReply,
+
+    /// <summary>Accept, decline or tentative on a calendar invitation (Text holds the response).</summary>
+    CalendarResponse,
+
+    /// <summary>Marks a Gmail thread read, after Mike replied to it or marked it handled.</summary>
+    EmailMarkRead,
+
+    /// <summary>Saves a reply to Gmail drafts instead of sending it, to finish on another device.</summary>
+    EmailDraft,
 }
 
 /// <summary>One thing Mike wrote, on its way out.</summary>

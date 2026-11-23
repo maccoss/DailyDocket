@@ -44,7 +44,7 @@ public static class SendPlans
     {
         var prompt =
             $"""
-            You are running DailyDocket's Send job. Mike wrote this message and pressed Send; your only task is to deliver it exactly.
+            You are running DailyDocket's Send job. Mike asked for exactly this action in the app (a message he wrote and sent, a calendar response, or marking a thread read); your only task is to carry it out exactly.
             First call ToolSearch once with the query "select:{call.ToolName}".
             Then call {call.ToolName} exactly once, with exactly these arguments, copied character for character (do not reword, reformat, add or remove anything):
             {call.Input.ToJsonString(Literal)}

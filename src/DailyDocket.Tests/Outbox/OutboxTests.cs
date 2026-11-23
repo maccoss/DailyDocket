@@ -90,6 +90,63 @@ public sealed class OutboxTests : IDisposable
     }
 
     [Fact]
+    public void A_calendar_response_names_the_event_the_response_and_a_secondary_calendar()
+    {
+        var rsvp = OutboxRules.Action(OutboxKind.CalendarResponse, "ev-2", null, "accepted", "Grant call", Now, "skiddaw");
+
+        var call = OutboxRules.Call(rsvp, includeSignature: true);
+
+        call.ToolName.ShouldBe("mcp__claude_ai_Google_Calendar__respond_to_event");
+        call.Input.ToJsonString().ShouldBe("""{"eventId":"ev-2","responseStatus":"accepted"}""");
+        OutboxRules.Call(rsvp with { Channel = "lab@example.org" }, true).Input["calendarId"]!.GetValue<string>().ShouldBe("lab@example.org");
+    }
+
+    [Fact]
+    public void Marking_read_removes_only_the_unread_label_from_the_thread()
+    {
+        var call = OutboxRules.Call(OutboxRules.Action(OutboxKind.EmailMarkRead, "thread-a", null, "", "", Now, "skiddaw"), true);
+
+        call.ToolName.ShouldBe("mcp__claude_ai_Gmail__unlabel_thread");
+        call.Input.ToJsonString().ShouldBe("""{"threadId":"thread-a","labelIds":["UNREAD"]}""");
+    }
+
+    [Fact]
+    public void A_gmail_draft_replies_to_the_message_with_the_chosen_recipients()
+    {
+        var call = OutboxRules.Call(Email() with { Kind = OutboxKind.EmailDraft }, includeSignature: false);
+
+        call.ToolName.ShouldBe("mcp__claude_ai_Gmail__create_draft");
+        call.Input["replyToMessageId"]!.GetValue<string>().ShouldBe("msg-a3");
+        call.Input["to"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(["pat@example.org"]);
+        call.Input["includeSignature"]!.GetValue<bool>().ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Only_replies_check_first_whether_the_conversation_moved_on()
+    {
+        OutboxRules.NeedsPreCheck(OutboxKind.EmailReply).ShouldBeTrue();
+        OutboxRules.NeedsPreCheck(OutboxKind.SlackReply).ShouldBeTrue();
+        OutboxRules.NeedsPreCheck(OutboxKind.CalendarResponse).ShouldBeFalse();
+        OutboxRules.NeedsPreCheck(OutboxKind.EmailMarkRead).ShouldBeFalse();
+        OutboxRules.NeedsPreCheck(OutboxKind.EmailDraft).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void The_guard_allows_a_response_only_as_claimed()
+    {
+        var item = OutboxRules.Action(OutboxKind.CalendarResponse, "ev-2", null, "declined", "Grant call", Now, "skiddaw");
+        var call = OutboxRules.Call(item, true);
+        var claims = Path.Combine(_dir, "rsvp-claims.json");
+        File.WriteAllText(claims, OutboxRules.ClaimsJson(item, call));
+
+        string Attempt(JsonObject input) =>
+            SendGuard.Decide(new JsonObject { ["hook_event_name"] = "PreToolUse", ["tool_name"] = call.ToolName, ["tool_input"] = input }.ToJsonString(), claims) ?? "allowed";
+
+        Attempt(new JsonObject { ["eventId"] = "ev-2", ["responseStatus"] = "accepted" }).ShouldContain("DailyDocket send guard");
+        Attempt(new JsonObject { ["eventId"] = "ev-2", ["responseStatus"] = "declined" }).ShouldBe("allowed");
+    }
+
+    [Fact]
     public void The_guard_allows_the_claimed_call_exactly_once_and_nothing_else()
     {
         var item = Email();

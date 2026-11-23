@@ -84,8 +84,46 @@ public static partial class OutboxRules
             item.ReplyTo is { } threadTs
                 ? new JsonObject { ["channel_id"] = item.Channel, ["message"] = item.Text, ["thread_ts"] = threadTs }
                 : new JsonObject { ["channel_id"] = item.Channel, ["message"] = item.Text }),
+
+        // Target is the event id; Channel the calendar id (null for the primary calendar).
+        OutboxKind.CalendarResponse => new SendCall(
+            ConnectorTools.Calendar + "respond_to_event",
+            item.Channel is { } calendarId
+                ? new JsonObject { ["eventId"] = item.Target, ["responseStatus"] = item.Text, ["calendarId"] = calendarId }
+                : new JsonObject { ["eventId"] = item.Target, ["responseStatus"] = item.Text }),
+
+        OutboxKind.EmailMarkRead => new SendCall(
+            ConnectorTools.Gmail + "unlabel_thread",
+            new JsonObject { ["threadId"] = item.Target, ["labelIds"] = new JsonArray("UNREAD") }),
+
+        OutboxKind.EmailDraft => new SendCall(
+            ConnectorTools.Gmail + "create_draft",
+            new JsonObject
+            {
+                ["to"] = new JsonArray([.. item.To.Select(a => (JsonNode)a)]),
+                ["cc"] = new JsonArray([.. item.Cc.Select(a => (JsonNode)a)]),
+                ["subject"] = item.Subject,
+                ["body"] = item.Text,
+                ["htmlBody"] = item.Html,
+                ["replyToMessageId"] = item.ReplyTo ?? throw new InvalidOperationException("A Gmail draft reply needs the message it answers."),
+                ["includeSignature"] = includeSignature,
+            }),
         _ => throw new InvalidOperationException($"Unknown outbox kind {item.Kind}."),
     };
+
+    /// <summary>
+    /// Only a reply checks first whether the conversation moved on. An RSVP, a label change or a
+    /// saved draft says nothing that a newer message could make wrong.
+    /// </summary>
+    public static bool NeedsPreCheck(OutboxKind kind) => kind is OutboxKind.EmailReply or OutboxKind.SlackReply;
+
+    /// <summary>Background items Mike did not write (marking read): not shown under the conversation.</summary>
+    public static bool IsHousekeeping(OutboxKind kind) => kind == OutboxKind.EmailMarkRead;
+
+    /// <summary>A new item that is not written text: an RSVP, or marking a thread read.</summary>
+    public static OutboxItem Action(OutboxKind kind, string target, string? channel, string text, string subject, DateTimeOffset sendAfter, string machine) => new(
+        Guid.NewGuid().ToString("N"), kind, OutboxStatus.Queued, target, null, channel, [], [], subject, "", "", "", text,
+        DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, sendAfter, null, machine, 0, null, null);
 
     /// <summary>The claims file the send guard reads: this item's one allowed call.</summary>
     public static string ClaimsJson(OutboxItem item, SendCall call) =>

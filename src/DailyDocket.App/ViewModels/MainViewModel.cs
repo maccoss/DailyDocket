@@ -56,7 +56,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _log = log;
         Todos = todos;
 
-        MailCompose.Queued += _ => ReloadOutbox();
+        MailCompose.Queued += item =>
+        {
+            if (item.Kind == OutboxKind.EmailReply)
+            {
+                QueueMarkRead(item.Target, item.SendAfter ?? DateTimeOffset.UtcNow);
+            }
+
+            ReloadOutbox();
+        };
         SlackCompose.Queued += _ => ReloadOutbox();
         _worker.Changed += _ => OnUi(() =>
         {
@@ -286,6 +294,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (SelectedMail is { } m)
         {
             MarkHandled("email", m.Key, m.UpTo, "Marked handled.");
+            QueueMarkRead(m.Key, DateTimeOffset.UtcNow);
         }
     }
 
@@ -490,6 +499,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         Fill(MailOutbox, SelectedMail?.Key);
         Fill(SlackOutbox, SelectedSlack?.Key);
+        ScheduleOutbox.Clear();
+        foreach (var i in _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending, OutboxStatus.Held, OutboxStatus.Failed).Where(i => i.Kind == OutboxKind.CalendarResponse))
+        {
+            ScheduleOutbox.Add(View(i, DateTimeOffset.UtcNow));
+        }
         var anyQueued = _outbox.WithStatus(OutboxStatus.Queued).Count > 0;
         if (anyQueued && !_countdown.IsEnabled)
         {
@@ -509,19 +523,76 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
 
             var now = DateTimeOffset.UtcNow;
-            foreach (var i in _outbox.ForTarget(target).Where(i => i.Status != OutboxStatus.Draft))
+            foreach (var i in _outbox.ForTarget(target).Where(i => i.Status != OutboxStatus.Draft && !OutboxRules.IsHousekeeping(i.Kind)))
             {
-                var status = i.Status switch
-                {
-                    OutboxStatus.Queued when i.SendAfter > now => $"Sending in {Math.Ceiling((i.SendAfter.Value - now).TotalSeconds):0} s",
-                    OutboxStatus.Queued => "Waiting to send" + (NetworkAvailable() ? "" : " (offline; sends when you are back online)"),
-                    OutboxStatus.Sending => "Sending...",
-                    OutboxStatus.Held => "Held",
-                    OutboxStatus.Failed => "Not sent",
-                    _ => i.Status.ToString(),
-                };
-                list.Add(new OutboxView(i, status, i.Problem, i.Status == OutboxStatus.Queued, i.Status is OutboxStatus.Held or OutboxStatus.Failed));
+                list.Add(View(i, now));
             }
+        }
+    }
+
+    /// <summary>One outbox item as a line under its conversation, worded for what it does.</summary>
+    private static OutboxView View(OutboxItem i, DateTimeOffset now)
+    {
+        var (soon, doing, notDone) = i.Kind switch
+        {
+            OutboxKind.CalendarResponse => ($"{Capitalized(i.Text)} \"{i.Subject}\"", "Responding...", "Response not sent"),
+            OutboxKind.EmailDraft => ("Saving to Gmail drafts", "Saving to Gmail drafts...", "Not saved to Gmail"),
+            _ => ("Sending", "Sending...", "Not sent"),
+        };
+        var status = i.Status switch
+        {
+            OutboxStatus.Queued when i.SendAfter > now => $"{soon} in {Math.Ceiling((i.SendAfter.Value - now).TotalSeconds):0} s",
+            OutboxStatus.Queued => $"{soon}: waiting" + (NetworkAvailable() ? "" : " (offline; goes when you are back online)"),
+            OutboxStatus.Sending => doing,
+            OutboxStatus.Held => "Held",
+            OutboxStatus.Failed => notDone,
+            _ => i.Status.ToString(),
+        };
+        return new OutboxView(i, status, i.Problem, i.Status == OutboxStatus.Queued, i.Status is OutboxStatus.Held or OutboxStatus.Failed);
+    }
+
+    private static string Capitalized(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    /// <summary>The Schedule's accept, tentative and decline responses on their way out.</summary>
+    public ObservableCollection<OutboxView> ScheduleOutbox { get; } = [];
+
+    [RelayCommand]
+    private void AcceptEvent(EventItem? e) => Respond(e, "accepted");
+
+    [RelayCommand]
+    private void TentativeEvent(EventItem? e) => Respond(e, "tentative");
+
+    [RelayCommand]
+    private void DeclineEvent(EventItem? e) => Respond(e, "declined");
+
+    /// <summary>
+    /// Queues a response behind the undo window. A second press on the same event replaces the
+    /// first while it is still waiting, so only his last choice goes out.
+    /// </summary>
+    private void Respond(EventItem? e, string response)
+    {
+        if (e is null || e.EventId.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var waiting in _outbox.ForTarget(e.EventId).Where(i => i.Kind == OutboxKind.CalendarResponse && i.Status == OutboxStatus.Queued))
+        {
+            _outbox.Delete(waiting.Id);
+        }
+
+        var sendAfter = DateTimeOffset.UtcNow.AddSeconds(Math.Max(0, _settings.UndoWindowSeconds));
+        _outbox.Save(OutboxRules.Action(OutboxKind.CalendarResponse, e.EventId, e.CalendarId, response, e.Title, sendAfter, AppInfo.MachineName));
+        ReloadOutbox();
+        Reload();
+    }
+
+    /// <summary>Marks a thread read in Gmail (a setting), after a reply or Handled.</summary>
+    private void QueueMarkRead(string threadId, DateTimeOffset sendAfter)
+    {
+        if (_settings.MarkReadInGmail)
+        {
+            _outbox.Save(OutboxRules.Action(OutboxKind.EmailMarkRead, threadId, null, "", "", sendAfter, AppInfo.MachineName));
         }
     }
 
@@ -638,6 +709,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ReloadSchedule(Core.Configuration.DocketConfig config, DateTimeOffset now, TimeZoneInfo zone)
     {
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var pending = _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending, OutboxStatus.Sent)
+            .Where(i => i.Kind == OutboxKind.CalendarResponse)
+            .GroupBy(i => i.Target)
+            .ToDictionary(g => g.Key, g => g.OrderBy(i => i.Updated).Last());
+        string? Response(Core.Calendar.CalendarEvent e) =>
+            pending.TryGetValue(e.EventId, out var p) && p.Status != OutboxStatus.Sent ? $"{p.Text} (sending)"
+            : pending.TryGetValue(e.EventId, out var sent) && (e.Updated is null || sent.Updated > e.Updated) ? sent.Text
+            : e.MyResponse is "needsAction" ? null : e.MyResponse;
         var days = _store.Schedule(config, now, zone).Select(d => new DayItem(
             d.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             d.Date.ToString("dddd", CultureInfo.InvariantCulture) + (d.Date == today ? " · today" : ""),
@@ -652,7 +731,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 s.Clash,
                 s.Unanswered,
                 !s.Calendar.Primary,
-                s.Event.HtmlLink))])).ToList();
+                s.Event.HtmlLink,
+                s.Event.EventId,
+                s.Calendar.Id,
+                s.Event.MyResponse is not null,
+                Response(s.Event)))])).ToList();
         Swap(Days, days, d => d);
         var meetings = days.Sum(d => d.Events.Count);
         ScheduleSummary = days.Count == 0 ? "Nothing on the calendar for the next week." : $"{meetings} meetings over the next {config.Schedule.Days} days";
@@ -736,8 +819,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private string OutboxSummary()
     {
-        var waiting = _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending).Count;
-        var attention = _outbox.WithStatus(OutboxStatus.Held, OutboxStatus.Failed).Count;
+        var waiting = _outbox.WithStatus(OutboxStatus.Queued, OutboxStatus.Sending).Count(i => !OutboxRules.IsHousekeeping(i.Kind));
+        var attention = _outbox.WithStatus(OutboxStatus.Held, OutboxStatus.Failed).Count(i => !OutboxRules.IsHousekeeping(i.Kind));
         return (waiting, attention) switch
         {
             (0, 0) => "outbox empty",

@@ -110,14 +110,30 @@ public sealed class OutboxWorker
         item = Update(item with { Status = OutboxStatus.Sending, ClaimedAt = DateTimeOffset.UtcNow, Machine = machine, Attempts = item.Attempts + 1, Problem = null });
         _log.LogInformation("Sending outbox item {Id} ({Kind})", item.Id, item.Kind);
 
-        // 1. Has the conversation moved on since he started writing?
+        if (OutboxRules.NeedsPreCheck(item.Kind))
+        {
+            if (!await StillCurrentAsync(item, model, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+        }
+
+        await DeliverAsync(item, signature, model, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A fresh read of the conversation: false (and the item requeued or held) when it cannot be
+    /// read or someone wrote since he started.
+    /// </summary>
+    private async Task<bool> StillCurrentAsync(OutboxItem item, string model, CancellationToken cancellationToken)
+    {
         var check = await _runner.RunAsync(SendPlans.PreCheck(item, model), cancellationToken).ConfigureAwait(false);
         var fresh = check.Ok ? Captured(check.CaptureFolder, SendPlans.PreCheckCall(item).Tool) : null;
         if (fresh is null)
         {
             // Offline or the connector failed: back in the queue, a little later.
             Update(item with { Status = OutboxStatus.Queued, SendAfter = DateTimeOffset.UtcNow.AddMinutes(2), Problem = check.Detail ?? "The pre-send check could not read the conversation; trying again shortly." });
-            return;
+            return false;
         }
 
         var movedOn = item.Kind == OutboxKind.EmailReply
@@ -126,10 +142,15 @@ public sealed class OutboxWorker
         if (movedOn)
         {
             Update(item with { Status = OutboxStatus.Held, Problem = "Someone wrote in this conversation after you started your reply. Read it, then send again, edit, or discard." });
-            return;
+            return false;
         }
 
-        // 2. The one guarded call.
+        return true;
+    }
+
+    /// <summary>The one guarded call.</summary>
+    private async Task DeliverAsync(OutboxItem item, bool signature, string model, CancellationToken cancellationToken)
+    {
         var call = OutboxRules.Call(item, signature);
         var sent = await _runner.RunAsync(SendPlans.Send(item, call, model), cancellationToken).ConfigureAwait(false);
         var result = Captured(sent.CaptureFolder, call.ToolName);
