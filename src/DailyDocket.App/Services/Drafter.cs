@@ -25,6 +25,21 @@ public sealed class Drafter
         _repository = repository;
     }
 
+    /// <summary>Claude's suggested task for a message: the artifact's capture brief.</summary>
+    public async Task<TaskSuggestion> SuggestTaskAsync(string conversation, IReadOnlyList<string> knownTags, CancellationToken cancellationToken)
+    {
+        if (!NetworkInterface.GetIsNetworkAvailable())
+        {
+            throw new InvalidOperationException("Claude's help needs a connection. Fill in the task yourself, or try again when you are online.");
+        }
+
+        var config = _config.Get();
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _config.Zone).DateTime);
+        var outcome = await _runner.RunAsync(CapturePlans.Capture(config, conversation, knownTags, today, _settings.PullModel), cancellationToken).ConfigureAwait(false);
+        return (outcome.Ok ? CapturePlans.Parse(outcome.FinalText, today, knownTags) : null)
+            ?? throw new InvalidOperationException(outcome.Detail ?? "Claude did not suggest a task. Fill it in yourself, or try again.");
+    }
+
     /// <summary>The reply guides: config/replies/*.md in the data repository.</summary>
     public string GuideFolder => Path.Combine(_repository.Root, "config", "replies");
 

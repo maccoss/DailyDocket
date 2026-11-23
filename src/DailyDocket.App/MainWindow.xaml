@@ -276,6 +276,11 @@
                                 Visibility="{Binding IsCapturing, Converter={StaticResource BoolToVisibility}}">
                             <StackPanel>
                                 <TextBox Text="{Binding CaptureTitle, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" ToolTip="Task" />
+                                <TextBlock Text="{Binding CaptureNote}" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0">
+                                    <TextBlock.Visibility>
+                                        <Binding Path="CaptureNote" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                    </TextBlock.Visibility>
+                                </TextBlock>
                                 <TextBox Text="{Binding CaptureNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40" Margin="0,6,0,0" ToolTip="Notes" />
                                 <DockPanel Margin="0,6,0,0" LastChildFill="False">
                                     <TextBlock DockPanel.Dock="Left" Text="Tags" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -283,6 +288,7 @@
                                     <TextBlock DockPanel.Dock="Left" Text="Due" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,6,0" />
                                     <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding CaptureDue}" Width="130" />
                                     <Button DockPanel.Dock="Right" Content="Add and mark handled" Command="{Binding SaveCaptureCommand}" Margin="6,0,0,0" />
+                                    <Button DockPanel.Dock="Right" Content="Draft with Claude" Command="{Binding SuggestTaskCommand}" Margin="6,0,0,0" ToolTip="Claude suggests the task's title, notes, date and tag from the message" />
                                     <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
                                 </DockPanel>
                             </StackPanel>
@@ -410,6 +416,11 @@
                                 Visibility="{Binding IsCapturing, Converter={StaticResource BoolToVisibility}}">
                             <StackPanel>
                                 <TextBox Text="{Binding CaptureTitle, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" ToolTip="Task" />
+                                <TextBlock Text="{Binding CaptureNote}" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0">
+                                    <TextBlock.Visibility>
+                                        <Binding Path="CaptureNote" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                                    </TextBlock.Visibility>
+                                </TextBlock>
                                 <TextBox Text="{Binding CaptureNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40" Margin="0,6,0,0" ToolTip="Notes" />
                                 <DockPanel Margin="0,6,0,0" LastChildFill="False">
                                     <TextBlock DockPanel.Dock="Left" Text="Tags" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -417,6 +428,7 @@
                                     <TextBlock DockPanel.Dock="Left" Text="Due" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,6,0" />
                                     <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding CaptureDue}" Width="130" />
                                     <Button DockPanel.Dock="Right" Content="Add and mark handled" Command="{Binding SaveCaptureCommand}" Margin="6,0,0,0" />
+                                    <Button DockPanel.Dock="Right" Content="Draft with Claude" Command="{Binding SuggestTaskCommand}" Margin="6,0,0,0" ToolTip="Claude suggests the task's title, notes, date and tag from the message" />
                                     <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
                                 </DockPanel>
                             </StackPanel>

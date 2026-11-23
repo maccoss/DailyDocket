@@ -38,6 +38,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private readonly OutboxStore _outbox;
     private readonly OutboxWorker _worker;
+    private readonly Drafter _drafter;
+    private Func<string>? _captureContext;
     private readonly System.Windows.Threading.DispatcherTimer _countdown = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings,
@@ -45,6 +47,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _outbox = outbox;
         _worker = worker;
+        _drafter = drafter;
         MailCompose = new ComposeViewModel(outbox, settings, OutboxKind.EmailReply, drafter);
         SlackCompose = new ComposeViewModel(outbox, settings, OutboxKind.SlackReply, drafter);
         _store = store;
@@ -242,6 +245,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedMail is { } m)
         {
+            _captureContext = () => $"Email from {m.From}, subject \"{m.Subject}\".\n\n{MailConversation(m.Key)}";
             OpenCapture("email", m.Key, m.UpTo, m.Subject, $"{m.From}: {m.Subject}");
         }
     }
@@ -251,6 +255,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedSlack is { } s)
         {
+            _captureContext = () => $"Slack, {s.Where}.\n\n{SlackConversation(s.Key)}";
             var firstLine = s.Text.Split('\n')[0];
             OpenCapture("slack", s.Key, s.LastTs, s.Where, firstLine.Length > 80 ? firstLine[..80] : firstLine);
         }
@@ -263,8 +268,55 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CaptureNotes = "";
         CaptureTags = "";
         CaptureDue = null;
+        CaptureNote = null;
         IsCapturing = true;
     }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SuggestTaskCommand))]
+    public partial bool IsSuggesting { get; set; }
+
+    [ObservableProperty]
+    public partial string? CaptureNote { get; set; }
+
+    /// <summary>
+    /// Claude fills in the task from the message (the artifact's capture brief): a title, a line of
+    /// notes, a due date only when the message implies one, and one of his existing tags.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSuggest))]
+    private async Task SuggestTaskAsync()
+    {
+        if (_captureContext is not { } context)
+        {
+            return;
+        }
+
+        IsSuggesting = true;
+        CaptureNote = "Claude is reading it...";
+        try
+        {
+            var s = await _drafter.SuggestTaskAsync(context(), Todos.KnownTags, _stop.Token);
+            CaptureTitle = s.Title;
+            CaptureNotes = s.Notes;
+            CaptureDue = s.Due?.ToDateTime(TimeOnly.MinValue);
+            CaptureTags = s.Tag ?? "";
+            CaptureNote = s.Due is null ? "Claude's suggestion; no deadline in the message." : "Claude's suggestion; check the date.";
+        }
+        catch (InvalidOperationException e)
+        {
+            CaptureNote = e.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing.
+        }
+        finally
+        {
+            IsSuggesting = false;
+        }
+    }
+
+    private bool CanSuggest() => !IsSuggesting;
 
     /// <summary>Saving a task marks its source handled: it is tracked on the list instead (the artifact's rule).</summary>
     [RelayCommand]

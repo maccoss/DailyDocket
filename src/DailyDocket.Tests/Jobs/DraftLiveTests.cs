@@ -47,4 +47,34 @@ public sealed class DraftLiveTests(ITestOutputHelper output)
         outcome.Ok.ShouldBeTrue();
         outcome.FinalText.ShouldNotBeNullOrWhiteSpace();
     }
+
+    [Fact]
+    public async Task Claude_suggests_a_task_from_a_thread()
+    {
+        var folder = Environment.GetEnvironmentVariable("DAILYDOCKET_INSPECT");
+        var live = Environment.GetEnvironmentVariable("DAILYDOCKET_LIVE");
+        Assert.SkipWhen(string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(live), "Set DAILYDOCKET_INSPECT and DAILYDOCKET_LIVE.");
+
+        var config = DocketConfig.Load(Path.Combine(live!, "docket.yaml"));
+        var db = DocketDatabase.Open(Path.Combine(folder!, "docket.db"), "live-test");
+        var store = new Store(db);
+        var jobs = new JobStore(store, new CaptureIngestor(db, () => config, TimeZoneInfo.Local), () => config);
+        var subject = Environment.GetEnvironmentVariable("DAILYDOCKET_DRAFT_SUBJECT") ?? "NIH Mentorship";
+        var row = store.MailRows(DateTimeOffset.UtcNow.AddDays(-30)).Rows.First(r => r.Subject.Contains(subject, StringComparison.OrdinalIgnoreCase));
+        var conversation = $"Email from {row.WaitingOn}, subject \"{row.Subject}\".\n\n" +
+            string.Join("\n\n", store.ThreadMessages(row.ThreadId).Select(m => $"--- From: {m.Sender}\n{MailText.SplitQuoted(m.Body).Message}"));
+
+        var paths = new AppPaths(Directory.CreateTempSubdirectory("dd-capture-").FullName);
+        paths.EnsureCreated();
+        var tools = new ToolLocator();
+        var runner = new JobRunner(tools, new ProcessRunner(tools), paths, jobs, () => config, "unused.exe");
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var outcome = await runner.RunAsync(CapturePlans.Capture(config, conversation, ["Collab", "ITP", "Manuscript", "Service"], today, "haiku"));
+        var s = CapturePlans.Parse(outcome.FinalText, today, ["Collab", "ITP", "Manuscript", "Service"]);
+
+        output.WriteLine($"Thread: {row.Subject}; ok={outcome.Ok} cost={outcome.CostUsd:0.000}");
+        output.WriteLine($"Suggestion: {s}");
+        SqliteConnection.ClearAllPools();
+        s.ShouldNotBeNull();
+    }
 }

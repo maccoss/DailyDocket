@@ -26,6 +26,9 @@ impact first, empty headings deleted at release.
 - **To do and Handled on Email and Slack.** **To do** turned the thread being read into a task
   (linked to it) and marked the thread handled; **Handled** hid it until someone wrote again, with
   **Undo** right after. Handled threads were never sent to Claude for judging.
+- **Claude drafts the task.** The To do form on an email or Slack conversation gained **Draft with
+  Claude**, which filled in a title, a line of notes, one of Mike's existing tags, and a due date
+  only when the message implied one.
 - **The dashboard artifact's to-dos came across.** `DailyDocket.exe --import-artifact <folder>`
   brought the artifact's 22 to-dos and 238 Handled marks into the data repository, in the order
   the artifact showed them, and moved `docket.yaml` there so every computer shares it.
