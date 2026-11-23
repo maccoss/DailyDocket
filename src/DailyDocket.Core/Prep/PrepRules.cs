@@ -84,11 +84,19 @@ public static class PrepRules
     }
 
     /// <summary>
-    /// A brief is remade when there is none, or the event changed since it was written (its updated
-    /// time moved, which covers a new time or attendee list, or its start moved).
+    /// A brief is remade when there is none, the event's start moved, or what the brief depends on
+    /// changed (the event's <see cref="CalendarEvent.ContentHash"/>: start, end, title, description,
+    /// location, who is invited).
     /// </summary>
+    /// <remarks>
+    /// Not the event's updated time: Calendar moves it whenever anyone answers the invitation, which
+    /// made every RSVP remake the brief and pay for a run. A brief or cached event from before the
+    /// hash existed has none to compare; it is judged by its start alone rather than remade.
+    /// </remarks>
     public static bool IsStale(MeetingBrief? brief, CalendarEvent e) =>
-        brief is null || !SameSecond(brief.Start, e.Start) || (e.Updated is { } updated && (brief.EventUpdated is not { } written || !SameSecond(written, updated)));
+        brief is null
+        || !SameSecond(brief.Start, e.Start)
+        || (brief.EventHash is { } written && e.ContentHash is { } current && !string.Equals(written, current, StringComparison.Ordinal));
 
     /// <summary>The file keeps whole seconds; Calendar's updated times carry milliseconds.</summary>
     private static bool SameSecond(DateTimeOffset a, DateTimeOffset b) =>

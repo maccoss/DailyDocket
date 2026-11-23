@@ -86,13 +86,46 @@ public sealed class PrepTests
     [Fact]
     public void A_brief_is_remade_only_when_the_event_changed()
     {
-        var e = Event("e1", At(27, 10));
-        var brief = Brief("e1") with { Start = e.Start, EventUpdated = new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero) };
+        var e = Event("e1", At(27, 10)) with { ContentHash = "aaaa" };
+        var brief = Brief("e1") with { Start = e.Start, EventUpdated = new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero), EventHash = "aaaa" };
 
         PrepRules.IsStale(null, e).ShouldBeTrue();
-        PrepRules.IsStale(brief, e).ShouldBeFalse(); // the file's whole seconds match Calendar's milliseconds
-        PrepRules.IsStale(brief, e with { Updated = e.Updated!.Value.AddMinutes(5) }).ShouldBeTrue();
+        PrepRules.IsStale(brief, e).ShouldBeFalse();
+        PrepRules.IsStale(brief, e with { ContentHash = "bbbb" }).ShouldBeTrue();
         PrepRules.IsStale(brief, e with { Start = e.Start.AddHours(1) }).ShouldBeTrue();
+
+        // Someone answering the invitation moves the updated time and nothing else.
+        PrepRules.IsStale(brief, e with { Updated = e.Updated!.Value.AddMinutes(5) }).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_brief_or_event_from_before_the_hash_is_judged_by_its_start_alone()
+    {
+        var e = Event("e1", At(27, 10)) with { ContentHash = "aaaa" };
+        var old = Brief("e1") with { Start = e.Start, EventUpdated = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero), EventHash = null };
+
+        PrepRules.IsStale(old, e).ShouldBeFalse();
+        PrepRules.IsStale(old, e with { Start = e.Start.AddMinutes(30) }).ShouldBeTrue();
+        PrepRules.IsStale(old with { EventHash = "aaaa" }, e with { ContentHash = null }).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void The_event_hash_ignores_rsvps_but_not_what_the_brief_depends_on()
+    {
+        static string Parse(string attendees, string description = "Budget", string summary = "Renewal", string end = "2026-11-27T11:00:00-08:00") =>
+            CalendarParser.Parse(
+                $$"""{"events":[{"id":"e1","summary":"{{summary}}","description":"{{description}}","updated":"2026-11-20T18:00:00Z","start":{"dateTime":"2026-11-27T10:00:00-08:00"},"end":{"dateTime":"{{end}}"},"attendees":[{{attendees}}]}]}""",
+                "work",
+                Fixture.Pacific).Events.Single().ContentHash.ShouldNotBeNull();
+
+        var invited = Parse("""{"email":"owner@example.org","self":true,"responseStatus":"needsAction"},{"email":"Pat@Example.org","responseStatus":"needsAction"}""");
+        var answered = Parse("""{"email":"pat@example.org","responseStatus":"accepted"},{"email":"owner@example.org","self":true,"responseStatus":"accepted"}""");
+
+        answered.ShouldBe(invited);
+        Parse("""{"email":"owner@example.org"},{"email":"pat@example.org"},{"email":"lee@example.org"}""").ShouldNotBe(invited);
+        Parse("""{"email":"owner@example.org"},{"email":"pat@example.org"}""", description: "Budget and hiring").ShouldNotBe(invited);
+        Parse("""{"email":"owner@example.org"},{"email":"pat@example.org"}""", summary: "Renewal, moved").ShouldNotBe(invited);
+        Parse("""{"email":"owner@example.org"},{"email":"pat@example.org"}""", end: "2026-11-27T11:30:00-08:00").ShouldNotBe(invited);
     }
 
     [Fact]
@@ -107,6 +140,7 @@ public sealed class PrepTests
         back.Title.ShouldBe(brief.Title);
         back.Start.ShouldBe(brief.Start);
         back.EventUpdated.ShouldBe(brief.EventUpdated);
+        back.EventHash.ShouldBe(brief.EventHash);
         back.Attendees.ShouldBe(brief.Attendees);
         back.Agenda.ShouldBe(brief.Agenda);
         back.Context.ShouldBe(brief.Context);
@@ -224,7 +258,7 @@ public sealed class PrepTests
         var root = Directory.CreateTempSubdirectory("dd-prep-").FullName;
         try
         {
-            var events = new List<CalendarEvent> { Event("e1", At(27, 10)), Event("e2", At(30, 9)) };
+            var events = new List<CalendarEvent> { Event("e1", At(27, 10)) with { ContentHash = "h1" }, Event("e2", At(30, 9)) with { ContentHash = "h2" } };
             var changed = new List<string>();
             var runs = 0;
             var prep = new MeetingPrep(
@@ -232,7 +266,7 @@ public sealed class PrepTests
                 {
                     runs++;
                     var target = plan.Prep!.Targets[0];
-                    plan.Prep.Save(target, Brief(target.Event.EventId) with { Start = target.Event.Start, EventUpdated = target.Event.Updated });
+                    plan.Prep.Save(target, Brief(target.Event.EventId) with { Start = target.Event.Start, EventUpdated = target.Event.Updated, EventHash = target.Event.ContentHash });
                     return Task.FromResult(new JobOutcome("prep", true, null, 0, 0.2m));
                 },
                 () => root, Config, () => "sonnet", (_, _) => events, () => [], changed.Add, "skiddaw");
@@ -246,8 +280,9 @@ public sealed class PrepTests
             changed.Count.ShouldBe(2);
             BriefFile.Load(root, new DateOnly(2026, 11, 30), "e2")!.WrittenOn.ShouldBe("skiddaw");
 
-            // The event moved: its brief is remade.
-            events[0] = events[0] with { Updated = events[0].Updated!.Value.AddHours(1) };
+            // An RSVP alone changes nothing; a new description remakes the brief.
+            events[1] = events[1] with { Updated = events[1].Updated!.Value.AddHours(1) };
+            events[0] = events[0] with { ContentHash = "h1-changed" };
             prep.Due(FridayNight).Select(t => t.Event.EventId).ShouldBe(["e1"]);
         }
         finally
@@ -266,10 +301,50 @@ public sealed class PrepTests
                 (_, _) => Task.FromResult(new JobOutcome("prep", true, null, 0, 0.1m)),
                 () => root, Config, () => "sonnet", (_, _) => [Event("e1", At(27, 10))], () => [], _ => { }, "skiddaw");
 
-            var outcome = (await prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken)).Single();
+            var outcome = (await prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken)).Single().Outcome;
 
             outcome.Ok.ShouldBeFalse();
             outcome.Detail!.ShouldContain("without writing a brief");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Prep_now_leaves_a_meeting_the_nightly_run_is_preparing_to_that_run()
+    {
+        var root = Directory.CreateTempSubdirectory("dd-prep-").FullName;
+        try
+        {
+            var started = new TaskCompletionSource();
+            var release = new TaskCompletionSource();
+            var runs = 0;
+            var prep = new MeetingPrep(
+                async (plan, _) =>
+                {
+                    Interlocked.Increment(ref runs);
+                    started.TrySetResult();
+                    await release.Task;
+                    var target = plan.Prep!.Targets[0];
+                    plan.Prep.Save(target, Brief(target.Event.EventId) with { Start = target.Event.Start });
+                    return new JobOutcome("prep", true, null, 0, 0.2m);
+                },
+                () => root, Config, () => "sonnet", (_, _) => [Event("e1", At(27, 10))], () => [], _ => { }, "skiddaw");
+
+            var nightly = prep.RunDueAsync(FridayNight, TestContext.Current.CancellationToken);
+            await started.Task;
+            prep.IsPreparing("e1").ShouldBeTrue();
+
+            var now = await prep.PrepNowAsync("e1", FridayNight, TestContext.Current.CancellationToken);
+
+            now.ShouldNotBeNull().Ok.ShouldBeFalse();
+            now.Detail!.ShouldContain("already preparing");
+            release.SetResult();
+            (await nightly).ShouldHaveSingleItem().Outcome.Ok.ShouldBeTrue();
+            runs.ShouldBe(1);
+            prep.IsPreparing("e1").ShouldBeFalse();
         }
         finally
         {
@@ -292,7 +367,8 @@ public sealed class PrepTests
         ["19a2c0f3e8b1"],
         new DateTimeOffset(2026, 11, 27, 2, 4, 0, Pst),
         "skiddaw",
-        "sonnet");
+        "sonnet",
+        "0123abcd4567ef89");
 
     private sealed class FakeRun(PrepTarget target) : IRunContext
     {

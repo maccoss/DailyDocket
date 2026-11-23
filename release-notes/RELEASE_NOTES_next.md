@@ -132,6 +132,29 @@ impact first, empty headings deleted at release.
 - A to-do sync that failed in the background now says so in the window instead of failing silently,
   and a problem saving one sync's results no longer stops syncing until restart.
 
+- When two computers judged the same new email, or wrote the same brief, within one sync, the
+  window said "A to-do was changed on two computers at once" and kept a set-aside branch. Verdicts,
+  briefs and the nightly lease now take the copy already sent from the other computer; the banner
+  appears only when a to-do really conflicts.
+- Every time someone answered a meeting invitation, its brief was marked out of date and written
+  again at the next run. A brief is now remade only when the meeting's time, title, description,
+  location or invited people change.
+- Two computers could both run the night's sweep and briefs. A computer now claims the run in the
+  data repository before starting, and one that finds another's claim stands down.
+- One meeting brief that failed made the whole nightly run, older-mail search included, start
+  again every hour. Once the search has gone through, the night counts as done, and only the
+  failed briefs are tried again, up to three times.
+- Nightly failures were never shown, and a designated computer that kept failing (for example,
+  signed out of Claude) never handed the job to its fallback. The banner now says what went wrong
+  and what to do, and a fallback takes over after two failed runs in a row.
+- After the window closed, a sync or nightly run that was finishing could still update the window
+  and push to GitHub while DailyDocket exited. Closing now stops both; an unfinished nightly run is
+  noted on disk and sent at the next start.
+- **Prep now** on a meeting the nightly run was preparing at that moment started a second,
+  paid-for run. It now says the brief is already being prepared.
+- A computer named, for example, `null`, `yes` or `no` could not hold the nightly lease: its name
+  read back as something else. The name is now quoted in `state/lease.yaml`.
+
 - Closing DailyDocket no longer showed "DailyDocket could not start: The CancellationTokenSource
   has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),
   and a problem while cleaning up is now logged rather than reported as a failed start.

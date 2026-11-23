@@ -11,7 +11,13 @@ namespace DailyDocket.Data;
 /// </remarks>
 internal static class Migrations
 {
-    public const int Current = 2;
+    public const int Current = 3;
+
+    /// <summary>
+    /// Version 3: the hash of what a meeting brief depends on. Existing rows get null (a brief is
+    /// then judged by its start alone) until the next pull rewrites them.
+    /// </summary>
+    private const string EventHashStep = "ALTER TABLE calendar_event ADD COLUMN content_hash TEXT;";
 
     /// <summary>
     /// Version 2: the outbox, the one table that is not a cache (Mike's unsent writing). From here
@@ -62,6 +68,7 @@ internal static class Migrations
             status       TEXT NOT NULL,
             event_type   TEXT,
             updated_utc  TEXT,
+            content_hash TEXT,
             PRIMARY KEY (calendar_key, event_id)
         );
         CREATE INDEX calendar_event_start ON calendar_event (start_utc);
@@ -182,10 +189,19 @@ internal static class Migrations
         }
 
         using var tx = c.BeginTransaction();
-        if (version == 1)
+        if (version is 1 or 2)
         {
-            // The cache stays; add the outbox.
-            c.Execute(OutboxSchema, transaction: tx);
+            // The cache stays; each step adds what its version brought.
+            if (version == 1)
+            {
+                c.Execute(OutboxSchema, transaction: tx);
+            }
+
+            if (!c.Query<string>("SELECT name FROM pragma_table_info('calendar_event');", transaction: tx).Contains("content_hash"))
+            {
+                c.Execute(EventHashStep, transaction: tx);
+            }
+
             c.Execute($"PRAGMA user_version = {Current};", transaction: tx);
             tx.Commit();
             return;

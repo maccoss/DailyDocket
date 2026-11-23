@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DailyDocket.Core.Prep;
 
+/// <summary>How one event's brief went.</summary>
+public sealed record PrepResult(string EventId, string Title, JobOutcome Outcome);
+
 /// <summary>
 /// Makes meeting briefs: picks the events that need one, runs one read-only prep run per event, and
 /// saves each brief in the data repository, where the existing sync shares it with every machine.
@@ -25,6 +28,7 @@ public sealed class MeetingPrep
     private readonly Action<string> _changed;
     private readonly string _machine;
     private readonly ILogger _log;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _inFlight = new(StringComparer.Ordinal);
 
     public MeetingPrep(
         Func<JobPlan, CancellationToken, Task<JobOutcome>> run,
@@ -61,19 +65,29 @@ public sealed class MeetingPrep
         return [.. targets.Where(t => PrepRules.IsStale(briefs.GetValueOrDefault(t.Event.EventId), t.Event)).Take(Math.Max(0, config.Prep.MaxPerRun))];
     }
 
-    /// <summary>Preps everything due now: the nightly run and the midday catch-up.</summary>
-    public async Task<IReadOnlyList<JobOutcome>> RunDueAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>
+    /// Preps everything due now (the nightly run and the midday catch-up), or only the events in
+    /// <paramref name="only"/> that are still due (a retry of the briefs that failed). An event
+    /// being prepared right now (Prep now) is left to that run.
+    /// </summary>
+    public async Task<IReadOnlyList<PrepResult>> RunDueAsync(DateTimeOffset now, CancellationToken cancellationToken, IReadOnlyCollection<string>? only = null)
     {
-        var outcomes = new List<JobOutcome>();
-        foreach (var target in Due(now))
+        var results = new List<PrepResult>();
+        foreach (var target in Due(now).Where(t => (only is null || only.Contains(t.Event.EventId)) && !IsPreparing(t.Event.EventId)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            outcomes.Add(await PrepAsync(target, cancellationToken).ConfigureAwait(false));
+            if (await PrepAsync(target, cancellationToken).ConfigureAwait(false) is { } outcome)
+            {
+                results.Add(new PrepResult(target.Event.EventId, target.Event.Title, outcome));
+            }
         }
 
-        _log.LogInformation("Meeting prep: {Count} briefs attempted, {Ok} ok, ${Cost:0.00}", outcomes.Count, outcomes.Count(o => o.Ok), outcomes.Sum(o => o.CostUsd ?? 0));
-        return outcomes;
+        _log.LogInformation("Meeting prep: {Count} briefs attempted, {Ok} ok, ${Cost:0.00}", results.Count, results.Count(r => r.Outcome.Ok), results.Sum(r => r.Outcome.CostUsd ?? 0));
+        return results;
     }
+
+    /// <summary>True while a brief for <paramref name="eventId"/> is being written on this machine.</summary>
+    public bool IsPreparing(string eventId) => _inFlight.ContainsKey(eventId);
 
     /// <summary>
     /// Preps one event on demand ("Prep now"), whatever the selection rules say: Mike asked for it.
@@ -90,13 +104,36 @@ public sealed class MeetingPrep
         }
 
         var target = new PrepTarget(e, config.Calendars.FirstOrDefault(c => c.Key == e.CalendarKey)?.Id, DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(e.Start, zone).DateTime));
-        return await PrepAsync(target, cancellationToken).ConfigureAwait(false);
+        return await PrepAsync(target, cancellationToken).ConfigureAwait(false)
+            ?? new JobOutcome("prep", false, "Claude is already preparing this brief (the nightly run got to it first). It will appear here when it is done.", 0, null);
     }
 
     /// <summary>The briefs for the given days, by event id, for the Schedule tab.</summary>
     public IReadOnlyDictionary<string, MeetingBrief> Briefs(IEnumerable<DateOnly> days) => BriefFile.LoadDays(_repositoryRoot(), days);
 
-    private async Task<JobOutcome> PrepAsync(PrepTarget target, CancellationToken cancellationToken)
+    /// <summary>One prep run, or null when this event's brief is already being written here.</summary>
+    /// <remarks>
+    /// Prep now and the nightly run share this, so the same meeting is never prepared twice at
+    /// once (two runs paid for, and two writes of one file racing).
+    /// </remarks>
+    private async Task<JobOutcome?> PrepAsync(PrepTarget target, CancellationToken cancellationToken)
+    {
+        if (!_inFlight.TryAdd(target.Event.EventId, 0))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await PrepOnceAsync(target, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _inFlight.TryRemove(target.Event.EventId, out _);
+        }
+    }
+
+    private async Task<JobOutcome> PrepOnceAsync(PrepTarget target, CancellationToken cancellationToken)
     {
         var config = _config();
         var model = _model();
