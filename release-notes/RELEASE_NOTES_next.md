@@ -18,7 +18,7 @@ impact first, empty headings deleted at release.
   it was read from the local copy, so it read offline.
   (`src/DailyDocket.App`, `src/DailyDocket.Core/Jobs`)
 - **To do.** The To do tab held the task list: add a task with details, tags and a due date; tick
-  it off; edit or remove it; move it up or down (or Alt+Up and Alt+Down); filter by tag. Due dates
+  it off; edit or remove it; drag it to a new place or move it up or down (or Alt+Up and Alt+Down); filter by tag. Due dates
   read "today", "tomorrow" or "3d late", and each tag kept one color everywhere. The list lived in
   the private data repository (maccoss/DailyDocket-Data), one file per task, so every computer
   showed the same list, changes made offline were sent when the network returned, and a task

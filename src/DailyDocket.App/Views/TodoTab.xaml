@@ -194,7 +194,8 @@
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
-                <ItemsControl ItemsSource="{Binding Open}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" />
+                <ItemsControl x:Name="OpenList" ItemsSource="{Binding Open}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" AllowDrop="True"
+                              PreviewMouseLeftButtonDown="OnPressTask" PreviewMouseMove="OnDragTask" DragOver="OnDragOverTask" Drop="OnDropTask" />
                 <TextBlock Text="DONE" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink2Brush}" Margin="0,14,0,7"
                            Visibility="{Binding HasDone, Converter={StaticResource BoolToVisibility}}" />
                 <ItemsControl ItemsSource="{Binding Done}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" />
