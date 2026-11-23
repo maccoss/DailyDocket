@@ -24,6 +24,9 @@ public sealed class DocketConfig
 
     public ScheduleConfig Schedule { get; set; } = new();
 
+    /// <summary>Which machine runs the shared nightly jobs (deep sweep, meeting prep), and when.</summary>
+    public NightlyConfig Nightly { get; set; } = new();
+
     /// <summary>Reads <paramref name="path"/>, or returns the defaults when it does not exist.</summary>
     public static DocketConfig Load(string path)
     {
@@ -111,4 +114,38 @@ public sealed class ScheduleConfig
     public int Days { get; set; } = 7;
 
     public string TimeZone { get; set; } = "America/Los_Angeles";
+}
+
+/// <summary>
+/// The shared nightly jobs run on one machine so the team seat's usage is spent once, not once per
+/// computer. A lease file in the data repository lets a fallback take over when that machine is off.
+/// </summary>
+public sealed class NightlyConfig
+{
+    /// <summary>The machine that runs the nightly jobs. Empty: none does, and briefs are made only on demand.</summary>
+    public string Machine { get; set; } = "";
+
+    /// <summary>Machines that take over, in this order, when the designated one misses its runs.</summary>
+    public List<string> Fallback { get; set; } = [];
+
+    /// <summary>Local time of the nightly run (deep sweep and meeting prep), "HH:mm".</summary>
+    public string At { get; set; } = "02:00";
+
+    /// <summary>Local time of the midday catch-up (meeting prep for events added or changed since), "HH:mm".</summary>
+    public string CatchUpAt { get; set; } = "12:30";
+
+    /// <summary>
+    /// How long past due the lease must be before the first fallback takes over; the second waits
+    /// twice as long, and so on, so two fallbacks rarely both run.
+    /// </summary>
+    public double GraceHours { get; set; } = 2;
+
+    /// <summary>Machine names compare without case: Windows reports them upper case, the repository records them lower.</summary>
+    public static bool SameMachine(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) && string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    public bool IsDesignated(string machine) => SameMachine(Machine, machine);
+
+    /// <summary>The machine's place among the fallbacks, or -1.</summary>
+    public int FallbackRank(string machine) => Fallback.FindIndex(f => SameMachine(f, machine));
 }

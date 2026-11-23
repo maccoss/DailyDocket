@@ -4,7 +4,8 @@
 
 owner:
   name: Owner Person
-  emails: [owner@example.org]        # mail from these addresses was written by the owner  slackUserId: U0000000001            # an emoji reaction or message from this id counts as an answer
+  emails: [owner@example.org]        # mail from these addresses was written by the owner
+  slackUserId: U0000000001            # an emoji reaction or message from this id counts as an answer
   about: a professor who runs a research lab   # one line of context for the triage model
 
 calendars:
@@ -31,3 +32,14 @@ slack:
 schedule:
   days: 7
   timeZone: America/Los_Angeles
+
+# The shared nightly jobs (deep sweep of older mail, meeting prep) run on one machine.
+# It renews state/lease.yaml in the data repository after each run; when the lease is more
+# than graceHours past due, the first fallback takes over (the second waits twice as long)
+# until the named machine returns. Machine names are compared without case.
+nightly:
+  machine: desktop-1
+  fallback: [laptop-1]
+  at: "02:00"                          # local time of the nightly run
+  catchUpAt: "12:30"                   # midday meeting prep for events added or changed since
+  graceHours: 2
