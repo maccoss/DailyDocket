@@ -1,6 +1,7 @@
 using System.Globalization;
 using DailyDocket.Core.Configuration;
 using DailyDocket.Core.Jobs;
+using DailyDocket.Core.Todos;
 
 namespace DailyDocket.Data;
 
@@ -10,12 +11,14 @@ public sealed class JobStore : IJobStore
     private readonly Store _store;
     private readonly CaptureIngestor _ingestor;
     private readonly Func<DocketConfig> _config;
+    private readonly Func<HandledSet> _handled;
 
-    public JobStore(Store store, CaptureIngestor ingestor, Func<DocketConfig> config)
+    public JobStore(Store store, CaptureIngestor ingestor, Func<DocketConfig> config, Func<HandledSet>? handled = null)
     {
         _store = store;
         _ingestor = ingestor;
         _config = config;
+        _handled = handled ?? (() => HandledSet.Empty);
     }
 
     public int IngestFolder(string runId, string folder) => _ingestor.IngestFolder(runId, folder);
@@ -26,8 +29,9 @@ public sealed class JobStore : IJobStore
     public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max)
     {
         var config = _config();
-        var mail = _store.MailToTriage(config, MailSince(now), max);
-        var slack = mail.Count < max ? _store.SlackToTriage(config, SlackSince(now), max - mail.Count) : [];
+        var handled = _handled();
+        var mail = _store.MailToTriage(config, MailSince(now), max, handled);
+        var slack = mail.Count < max ? _store.SlackToTriage(config, SlackSince(now), max - mail.Count, handled) : [];
         return [.. mail, .. slack];
     }
 

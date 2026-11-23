@@ -12,7 +12,8 @@ public sealed record EventItem(string Time, string Title, string Tag, string Loc
 
 /// <summary>A thread on the Email tab.</summary>
 /// <param name="Staleness">0 recent, 1 over a month, 2 over three months: the age chip's emphasis.</param>
-public sealed record MailItem(string Key, string From, string Age, int Staleness, string Subject, string Snippet, string? Why, bool IsDraft, bool Unread);
+/// <param name="UpTo">The time of the message he is waiting on (ISO 8601): what a Handled mark covers.</param>
+public sealed record MailItem(string Key, string From, string Age, int Staleness, string Subject, string Snippet, string? Why, bool IsDraft, bool Unread, string UpTo);
 
 /// <summary>One message in the reader.</summary>
 /// <param name="Recipients">"to Pat, Sam; cc Lee" for mail, empty for Slack.</param>
@@ -20,4 +21,5 @@ public sealed record MailItem(string Key, string From, string Age, int Staleness
 public sealed record MessageView(string From, string When, string Recipients, string Text, string? Quoted, bool IsMine);
 
 /// <summary>A conversation on the Slack tab.</summary>
-public sealed record SlackItem(string Key, string From, string Age, bool Stale, string Where, string Text, string? Why);
+/// <param name="LastTs">The newest message's ts: what a Handled mark covers.</param>
+public sealed record SlackItem(string Key, string From, string Age, bool Stale, string Where, string Text, string? Why, string LastTs);

@@ -8,6 +8,7 @@ using DailyDocket.App.Services;
 using DailyDocket.Core.Calendar;
 using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Jobs;
+using DailyDocket.Core.Todos;
 using DailyDocket.Data;
 using Microsoft.Extensions.Logging;
 
@@ -25,17 +26,35 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly JobStore _jobs;
     private readonly SyncScheduler _scheduler;
     private readonly ConfigSource _config;
+    private readonly TodoBook _book;
+    private readonly AppSettings _settings;
     private readonly ILogger<MainViewModel> _log;
     private readonly CancellationTokenSource _stop = new();
     private SyncResult? _lastSync;
+    private string? _dataProblem;
+    private (string Kind, string Key, string UpTo, string Subject)? _capture;
+    private (string Kind, string Key)? _lastHandled;
 
-    public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, ILogger<MainViewModel> log)
+    public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings, ILogger<MainViewModel> log)
     {
         _store = store;
         _jobs = jobs;
         _scheduler = scheduler;
         _config = config;
+        _book = book;
+        _settings = settings;
         _log = log;
+        Todos = todos;
+
+        // A Handled mark, here or from another machine, changes what the tabs show.
+        _book.Changed += () => OnUi(Reload);
+        _book.Synced += result => OnUi(() =>
+        {
+            _dataProblem = result.Problem ?? (result.SetAside is { } branch
+                ? $"A to-do was changed on two computers at once. This computer's version is kept on the {branch} branch of your data repository; the list shows the other."
+                : null);
+            Banner = SetupProblem() ?? FailureBanner();
+        });
 
         _scheduler.Started += () => OnUi(() =>
         {
@@ -51,7 +70,29 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    public TodoViewModel Todos { get; }
+
     public ObservableCollection<DayItem> Days { get; } = [];
+
+    /// <summary>The task form shown over the reader after To do is pressed.</summary>
+    [ObservableProperty]
+    public partial bool IsCapturing { get; set; }
+
+    [ObservableProperty]
+    public partial string CaptureTitle { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string CaptureNotes { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string CaptureTags { get; set; } = "";
+
+    [ObservableProperty]
+    public partial DateTime? CaptureDue { get; set; }
+
+    /// <summary>"Marked handled" after a Handled press, with Undo; null otherwise.</summary>
+    [ObservableProperty]
+    public partial string? UndoText { get; set; }
 
     public ObservableCollection<MailItem> Mail { get; } = [];
 
@@ -102,7 +143,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Shows the cache, then syncs now and on the timer.</summary>
     public void Start()
     {
+        if (_book.Sync.IsCloned)
+        {
+            _book.Reload();
+        }
+
+        Todos.Refresh();
         Reload();
+        _ = StartAsync();
+    }
+
+    /// <summary>Clones the data repository the first time, brings its changes in, then starts the timer.</summary>
+    private async Task StartAsync()
+    {
+        try
+        {
+            if (!_book.Sync.IsCloned && _settings.DataRepositoryUrl.Length > 0)
+            {
+                _dataProblem = await _book.Sync.EnsureClonedAsync(_settings.DataRepositoryUrl, _stop.Token);
+                if (_config.AdoptIntoRepository())
+                {
+                    _log.LogInformation("Moved docket.yaml into the data repository");
+                }
+            }
+
+            if (_book.Sync.IsCloned)
+            {
+                await _book.SyncNowAsync(_stop.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        OnUi(Reload);
         if (_config.IsComplete)
         {
             _ = RunTimerAsync();
@@ -118,10 +193,100 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var data = _book.Sync.IsCloned ? _book.SyncNowAsync(_stop.Token) : Task.CompletedTask;
         await _scheduler.SyncAsync(_stop.Token);
+        await data;
     }
 
     private bool CanRefresh() => !IsSyncing;
+
+    [RelayCommand]
+    private void CaptureMail()
+    {
+        if (SelectedMail is { } m)
+        {
+            OpenCapture("email", m.Key, m.UpTo, m.Subject, $"{m.From}: {m.Subject}");
+        }
+    }
+
+    [RelayCommand]
+    private void CaptureSlack()
+    {
+        if (SelectedSlack is { } s)
+        {
+            var firstLine = s.Text.Split('\n')[0];
+            OpenCapture("slack", s.Key, s.LastTs, s.Where, firstLine.Length > 80 ? firstLine[..80] : firstLine);
+        }
+    }
+
+    private void OpenCapture(string kind, string key, string upTo, string subject, string title)
+    {
+        _capture = (kind, key, upTo, subject);
+        CaptureTitle = title;
+        CaptureNotes = "";
+        CaptureTags = "";
+        CaptureDue = null;
+        IsCapturing = true;
+    }
+
+    /// <summary>Saving a task marks its source handled: it is tracked on the list instead (the artifact's rule).</summary>
+    [RelayCommand]
+    private void SaveCapture()
+    {
+        if (_capture is not { } c || string.IsNullOrWhiteSpace(CaptureTitle))
+        {
+            return;
+        }
+
+        _book.Add(CaptureTitle, CaptureNotes, CaptureDue is { } d ? DateOnly.FromDateTime(d) : null, Core.Todos.TodoRules.ParseTags(CaptureTags), new Core.Todos.TodoSource(c.Kind, c.Key, c.Subject));
+        IsCapturing = false;
+        _capture = null;
+        MarkHandled(c.Kind, c.Key, c.UpTo, "Added to To do and marked handled.");
+    }
+
+    [RelayCommand]
+    private void CancelCapture()
+    {
+        IsCapturing = false;
+        _capture = null;
+    }
+
+    [RelayCommand]
+    private void HandleMail()
+    {
+        if (SelectedMail is { } m)
+        {
+            MarkHandled("email", m.Key, m.UpTo, "Marked handled.");
+        }
+    }
+
+    [RelayCommand]
+    private void HandleSlack()
+    {
+        if (SelectedSlack is { } s)
+        {
+            MarkHandled("slack", s.Key, s.LastTs, "Marked handled.");
+        }
+    }
+
+    private void MarkHandled(string kind, string key, string upTo, string message)
+    {
+        _book.MarkHandled(kind, key, upTo);
+        _lastHandled = (kind, key);
+        UndoText = message;
+    }
+
+    [RelayCommand]
+    private void Undo()
+    {
+        if (_lastHandled is { } h)
+        {
+            _book.Unhandle(h.Kind, h.Key);
+        }
+
+        _lastHandled = null;
+        UndoText = null;
+    }
 
     [RelayCommand]
     private static void Open(string? url)
@@ -269,7 +434,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void ReloadMail(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
-        var (rows, counts) = _store.MailRows(_jobs.MailSince(now));
+        var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled);
         var items = rows.Where(r => r.State is "Owed" or "Draft").Select(r =>
         {
             var waited = now - (r.WaitingSince ?? now);
@@ -282,7 +447,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 r.Snippet,
                 r.Why,
                 r.State == "Draft",
-                r.Unread);
+                r.Unread,
+                r.WaitingSince?.ToString("O", CultureInfo.InvariantCulture) ?? now.ToString("O", CultureInfo.InvariantCulture));
         }).ToList();
         var selected = SelectedMail?.Key;
         Swap(Mail, items, m => m);
@@ -301,12 +467,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         parts.Add($"{counts.Quiet} set aside");
+        if (counts.Handled > 0)
+        {
+            parts.Add($"{counts.Handled} handled");
+        }
+
         MailSummary = string.Join(" · ", parts);
     }
 
     private void ReloadSlack(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
-        var rows = _store.SlackRows(config, _jobs.SlackSince(now));
+        var rows = _store.SlackRows(config, _jobs.SlackSince(now), _book.Handled);
         var owed = rows.Where(r => r.State == "Owed").Select(r => new SlackItem(
             r.Key,
             r.From,
@@ -314,7 +485,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             now - r.When > TimeSpan.FromDays(3),
             r.IsDm ? $"DM · {r.Where}" : r.Where,
             Preview(Core.Slack.SlackRules.Readable(r.Text)),
-            r.Why)).ToList();
+            r.Why,
+            r.LastTs)).ToList();
         var selected = SelectedSlack?.Key;
         Swap(Slack, owed, s => s);
         Reselect(selected, Slack, s => s.Key, SelectedSlack, s => SelectedSlack = s);
@@ -350,8 +522,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private string? FailureBanner()
     {
-        var failed = _lastSync?.Outcomes.Where(o => !o.Ok).Select(o => o.Detail).Distinct().ToList();
-        return failed is { Count: > 0 } ? string.Join(" ", failed) : null;
+        var failed = _lastSync?.Outcomes.Where(o => !o.Ok).Select(o => o.Detail).Distinct().ToList() ?? [];
+        if (_dataProblem is { } data)
+        {
+            failed.Add(data);
+        }
+
+        return failed.Count > 0 ? string.Join(" ", failed) : null;
     }
 
     /// <summary>Replaces a list's items only when they changed, so a sync that found nothing new leaves the scroll position alone.</summary>

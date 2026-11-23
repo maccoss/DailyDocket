@@ -17,6 +17,18 @@ impact first, empty headings deleted at release.
   message first, with each reply's quoted history folded away and Slack's markup shown as names;
   it was read from the local copy, so it read offline.
   (`src/DailyDocket.App`, `src/DailyDocket.Core/Jobs`)
+- **To do.** The To do tab held the task list: add a task with details, tags and a due date; tick
+  it off; edit or remove it; move it up or down (or Alt+Up and Alt+Down); filter by tag. Due dates
+  read "today", "tomorrow" or "3d late", and each tag kept one color everywhere. The list lived in
+  the private data repository (maccoss/DailyDocket-Data), one file per task, so every computer
+  showed the same list, changes made offline were sent when the network returned, and a task
+  changed on two computers at once kept the other version on a set-aside branch.
+- **To do and Handled on Email and Slack.** **To do** turned the thread being read into a task
+  (linked to it) and marked the thread handled; **Handled** hid it until someone wrote again, with
+  **Undo** right after. Handled threads were never sent to Claude for judging.
+- **The dashboard artifact's to-dos came across.** `DailyDocket.exe --import-artifact <folder>`
+  brought the artifact's 22 to-dos and 238 Handled marks into the data repository, in the order
+  the artifact showed them, and moved `docket.yaml` there so every computer shares it.
 - **Syncing.** DailyDocket synced on start, every 15 minutes (`"PullIntervalMinutes"`) and on
   **Refresh**, through Claude Code with read-only tools: it could not send, reply or change
   anything. Mail threads were read only when they changed, and Claude judged each conversation

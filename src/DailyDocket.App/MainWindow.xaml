@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:DailyDocket.App.ViewModels"
+        xmlns:views="clr-namespace:DailyDocket.App.Views"
         Title="DailyDocket" Width="1100" Height="820" MinWidth="560" MinHeight="420"
         Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource InkBrush}"
         FontFamily="Segoe UI" FontSize="14"
@@ -143,8 +144,7 @@
             </TabItem>
 
             <TabItem Header="TO DO">
-                <TextBlock Style="{StaticResource Muted}" Margin="0,10,0,0"
-                           Text="Your to-do list moves here with the next update, synced through your private DailyDocket-Data repository. Until then, keep using the dashboard's To do column." />
+                <views:TodoTab DataContext="{Binding Todos}" />
             </TabItem>
 
             <TabItem Header="EMAIL">
@@ -156,6 +156,13 @@
                     </Grid.ColumnDefinitions>
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding MailSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
+                            <DockPanel.Visibility>
+                                <Binding Path="UndoText" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                            </DockPanel.Visibility>
+                            <TextBlock DockPanel.Dock="Left" Text="{Binding UndoText}" Foreground="{StaticResource OkBrush}" VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Left" Content="Undo" Command="{Binding UndoCommand}" Style="{StaticResource OpenButton}" Margin="8,0,0,0" />
+                        </DockPanel>
                         <ListBox ItemsSource="{Binding Mail}" SelectedItem="{Binding SelectedMail}" Style="{StaticResource RowList}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:MailItem}">
@@ -201,7 +208,28 @@
                     <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Margin="6,0" />
                     <DockPanel Grid.Column="2">
                         <TextBlock DockPanel.Dock="Top" Text="{Binding MailReaderTitle}" FontFamily="Georgia" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10" />
-                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                            <StackPanel.Visibility>
+                                <Binding Path="MailReaderTitle" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                            </StackPanel.Visibility>
+                            <Button Content="To do" Command="{Binding CaptureMailCommand}" ToolTip="Make this a task and mark it handled" Margin="0,0,6,0" />
+                            <Button Content="Handled" Command="{Binding HandleMailCommand}" ToolTip="Hide this until someone writes again" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource WarnBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
+                                Visibility="{Binding IsCapturing, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <TextBox Text="{Binding CaptureTitle, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" ToolTip="Task" />
+                                <TextBox Text="{Binding CaptureNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40" Margin="0,6,0,0" ToolTip="Notes" />
+                                <DockPanel Margin="0,6,0,0" LastChildFill="False">
+                                    <TextBlock DockPanel.Dock="Left" Text="Tags" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBox DockPanel.Dock="Left" Text="{Binding CaptureTags, UpdateSourceTrigger=PropertyChanged}" Width="200" ToolTip="Comma separated" />
+                                    <TextBlock DockPanel.Dock="Left" Text="Due" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,6,0" />
+                                    <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding CaptureDue}" Width="130" />
+                                    <Button DockPanel.Dock="Right" Content="Add and mark handled" Command="{Binding SaveCaptureCommand}" Margin="6,0,0,0" />
+                                    <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
                                    Text="Select a thread to read it here. It is stored on this computer, so it reads offline.">
                             <TextBlock.Visibility>
                                 <Binding Path="MailReaderTitle" Converter="{x:Static vm:Converters.EmptyToVisibility}" />
@@ -223,6 +251,13 @@
                     </Grid.ColumnDefinitions>
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding SlackSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
+                            <DockPanel.Visibility>
+                                <Binding Path="UndoText" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                            </DockPanel.Visibility>
+                            <TextBlock DockPanel.Dock="Left" Text="{Binding UndoText}" Foreground="{StaticResource OkBrush}" VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Left" Content="Undo" Command="{Binding UndoCommand}" Style="{StaticResource OpenButton}" Margin="8,0,0,0" />
+                        </DockPanel>
                         <ListBox ItemsSource="{Binding Slack}" SelectedItem="{Binding SelectedSlack}" Style="{StaticResource RowList}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:SlackItem}">
@@ -261,7 +296,28 @@
                     <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" Margin="6,0" />
                     <DockPanel Grid.Column="2">
                         <TextBlock DockPanel.Dock="Top" Text="{Binding SlackReaderTitle}" FontFamily="Georgia" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10" />
-                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                            <StackPanel.Visibility>
+                                <Binding Path="SlackReaderTitle" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
+                            </StackPanel.Visibility>
+                            <Button Content="To do" Command="{Binding CaptureSlackCommand}" ToolTip="Make this a task and mark it handled" Margin="0,0,6,0" />
+                            <Button Content="Handled" Command="{Binding HandleSlackCommand}" ToolTip="Hide this until someone writes again" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource WarnBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
+                                Visibility="{Binding IsCapturing, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <TextBox Text="{Binding CaptureTitle, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" ToolTip="Task" />
+                                <TextBox Text="{Binding CaptureNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40" Margin="0,6,0,0" ToolTip="Notes" />
+                                <DockPanel Margin="0,6,0,0" LastChildFill="False">
+                                    <TextBlock DockPanel.Dock="Left" Text="Tags" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBox DockPanel.Dock="Left" Text="{Binding CaptureTags, UpdateSourceTrigger=PropertyChanged}" Width="200" ToolTip="Comma separated" />
+                                    <TextBlock DockPanel.Dock="Left" Text="Due" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,6,0" />
+                                    <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding CaptureDue}" Width="130" />
+                                    <Button DockPanel.Dock="Right" Content="Add and mark handled" Command="{Binding SaveCaptureCommand}" Margin="6,0,0,0" />
+                                    <Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelCaptureCommand}" Foreground="{StaticResource MutedBrush}" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,20,0,0"
                                    Text="Select a conversation to read it here. It is stored on this computer, so it reads offline.">
                             <TextBlock.Visibility>
                                 <Binding Path="SlackReaderTitle" Converter="{x:Static vm:Converters.EmptyToVisibility}" />

@@ -5,6 +5,7 @@ using DailyDocket.Core.Configuration;
 using DailyDocket.Core.Jobs;
 using DailyDocket.Core.Mail;
 using DailyDocket.Core.Slack;
+using DailyDocket.Core.Todos;
 using Microsoft.Data.Sqlite;
 
 namespace DailyDocket.Data;
@@ -15,10 +16,10 @@ public sealed record MailRow(
     string ThreadId, string State, string WaitingOn, string Subject, string Snippet, DateTimeOffset? WaitingSince, string? Why, bool Unread, bool RepliedEarlier);
 
 /// <summary>A conversation on the Slack tab.</summary>
-public sealed record SlackRow(string Key, string State, string From, string Where, bool IsDm, string Text, DateTimeOffset When, string? Why, string? Permalink);
+public sealed record SlackRow(string Key, string State, string From, string Where, bool IsDm, string Text, DateTimeOffset When, string? Why, string? Permalink, string LastTs = "");
 
 /// <summary>How many items the tabs hide, and why, so the rules stay checkable.</summary>
-public sealed record MailCounts(int Owed, int Reading, int Quiet);
+public sealed record MailCounts(int Owed, int Reading, int Quiet, int Handled = 0);
 
 /// <summary>Reads and writes the cache for the jobs and the tabs.</summary>
 public sealed class Store
@@ -80,7 +81,7 @@ public sealed class Store
     }
 
     /// <summary>The Email tab: unsent drafts first, then what he owes, oldest wait first.</summary>
-    public (IReadOnlyList<MailRow> Rows, MailCounts Counts) MailRows(DateTimeOffset seenSince)
+    public (IReadOnlyList<MailRow> Rows, MailCounts Counts) MailRows(DateTimeOffset seenSince, HandledSet? handled = null)
     {
         using var c = _db.Connect();
         var rows = c.Query(
@@ -92,9 +93,16 @@ public sealed class Store
             new { since = DocketDatabase.Iso(seenSince) }).ToList();
 
         var result = new List<MailRow>();
-        int owed = 0, reading = 0, quiet = 0;
+        int owed = 0, reading = 0, quiet = 0, handledCount = 0;
         foreach (var r in rows)
         {
+            // Marked handled and nobody has written since: off the tab until someone does.
+            if (handled?.CoversEmail((string)r.thread_id, DocketDatabase.FromIso((string?)r.waiting_since_utc)) == true)
+            {
+                handledCount++;
+                continue;
+            }
+
             var category = (string)r.category;
             string? state = null;
             string? why = null;
@@ -145,22 +153,25 @@ public sealed class Store
             .OrderBy(r => r.State == "Draft" ? 0 : r.State == "Owed" ? 1 : 2)
             .ThenBy(r => r.WaitingSince ?? DateTimeOffset.MaxValue)
             .ToList();
-        return (ordered, new MailCounts(owed, reading, quiet));
+        return (ordered, new MailCounts(owed, reading, quiet, handledCount));
     }
 
     /// <summary>Open threads whose newest message Claude has not judged, newest first.</summary>
-    public IReadOnlyList<TriageItem> MailToTriage(DocketConfig config, DateTimeOffset seenSince, int max)
+    public IReadOnlyList<TriageItem> MailToTriage(DocketConfig config, DateTimeOffset seenSince, int max, HandledSet? handled = null)
     {
         using var c = _db.Connect();
-        var ids = c.Query<(string ThreadId, string ReadId)>(
+        var ids = c.Query<(string ThreadId, string ReadId, string? Since)>(
             """
-            SELECT t.thread_id, t.read_message_id FROM email_thread t
+            SELECT t.thread_id, t.read_message_id, t.waiting_since_utc FROM email_thread t
             LEFT JOIN verdict v ON v.source = 'mail' AND v.item_key = t.thread_id
             WHERE t.category = 'Open' AND t.seen_utc >= @since AND t.read_message_id IS NOT NULL
               AND (v.for_message IS NULL OR v.for_message <> t.read_message_id)
-            ORDER BY t.waiting_since_utc DESC LIMIT @max
+            ORDER BY t.waiting_since_utc DESC
             """,
-            new { since = DocketDatabase.Iso(seenSince), max }).ToList();
+            new { since = DocketDatabase.Iso(seenSince) })
+            .Where(i => handled?.CoversEmail(i.ThreadId, DocketDatabase.FromIso(i.Since)) != true) // never pay to judge what he handled
+            .Take(max)
+            .ToList();
 
         return [.. ids.Select(i => new TriageItem("mail", i.ThreadId, i.ReadId, MailRules.TriageTranscript(LoadMessages(c, null, i.ThreadId), config)))];
     }
@@ -228,12 +239,12 @@ public sealed class Store
     }
 
     /// <summary>The Slack tab: conversations waiting on him that Claude says need a reply, oldest first.</summary>
-    public IReadOnlyList<SlackRow> SlackRows(DocketConfig config, DateTimeOffset since)
+    public IReadOnlyList<SlackRow> SlackRows(DocketConfig config, DateTimeOffset since, HandledSet? handled = null)
     {
         var me = config.Owner.SlackUserId;
         var verdicts = Verdicts("slack");
         var rows = new List<SlackRow>();
-        foreach (var conv in SlackConversations(since).Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since))
+        foreach (var conv in SlackConversations(since).Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since && handled?.CoversSlack(c.Key, c.Last.Ts) != true))
         {
             var last = conv.Last;
             string state;
@@ -255,20 +266,20 @@ public sealed class Store
 
             var where = last.IsDm ? SlackRules.Others(last, config.Owner.Name) : last.ChannelLabel;
             var link = conv.Messages.LastOrDefault(m => m.Permalink is not null)?.Permalink;
-            rows.Add(new SlackRow(conv.Key, state, last.FromName, where, last.IsDm, last.Text, last.When, why, link));
+            rows.Add(new SlackRow(conv.Key, state, last.FromName, where, last.IsDm, last.Text, last.When, why, link, last.Ts));
         }
 
         return [.. rows.OrderBy(r => r.State == "Owed" ? 0 : 1).ThenBy(r => r.When)];
     }
 
-    public IReadOnlyList<TriageItem> SlackToTriage(DocketConfig config, DateTimeOffset since, int max)
+    public IReadOnlyList<TriageItem> SlackToTriage(DocketConfig config, DateTimeOffset since, int max, HandledSet? handled = null)
     {
         var me = config.Owner.SlackUserId;
         var verdicts = Verdicts("slack");
         return
         [
             .. SlackConversations(since)
-                .Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since)
+                .Where(c => SlackRules.IsWaiting(c, me) && c.Last.When >= since && handled?.CoversSlack(c.Key, c.Last.Ts) != true)
                 .Where(c => !(verdicts.TryGetValue(c.Key, out var v) && v.ForMessage == c.Last.Ts))
                 .OrderByDescending(c => c.Last.TsValue)
                 .Take(max)

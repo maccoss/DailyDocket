@@ -11,6 +11,9 @@ public sealed class AppSettings
     /// <summary>Folder holding the clone of the private to-do repository; null uses the default under the data folder.</summary>
     public string? TodoRepositoryPath { get; set; }
 
+    /// <summary>The private data repository (to-dos, Handled marks, docket.yaml) to clone; empty means none yet.</summary>
+    public string DataRepositoryUrl { get; set; } = "https://github.com/maccoss/DailyDocket-Data.git";
+
     /// <summary>
     /// Claude Code session per key, so "continue" picks up a drafting conversation (keyed by
     /// <c>email:</c> plus the thread id, or <c>slack:</c> plus the conversation key).

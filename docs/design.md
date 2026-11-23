@@ -283,7 +283,16 @@ The read-only mirror works against the real accounts on skiddaw. A first sync to
 - **Full sweeps every six hours, two-day sweeps in between.** A full sweep's start is a watermark; the Email tab shows threads seen since the last full sweep began, so an archived thread leaves at the next one. Each run reads at most 40 changed threads; the rest wait for the next run.
 - **Triage is one Sonnet run per sync**, reading transcripts from the cache through `triage_batch` and writing through `record_verdicts`, in batches of 15, mail first. It has no connector tools.
 - **Run isolation:** `--setting-sources local` (the owner's `~/.claude` settings and hooks do not apply), `--permission-mode dontAsk`, inherited `CLAUDE*`/`ANTHROPIC*` variables removed.
-- **Not yet:** the tray, notifications, Handled marks (phase 3, in git), open loops ("you said you would"), and `slack_read_thread` for conversations whose search context runs out.
+- **Not yet:** the tray, notifications, open loops ("you said you would"), and `slack_read_thread` for conversations whose search context runs out.
+
+### Phase 3 as built
+
+The to-dos and Handled marks live in `maccoss/DailyDocket-Data` as designed: `todos/<id>.md`, `handled/email/<threadId>.yaml`, `handled/slack/<channel>~<threadTs>.yaml`, and `config/docket.yaml` (adopted from the data folder on first clone). The artifact's 22 to-dos and 238 Handled marks were imported with `--import-artifact` from its database exported by the ArtifactData tool.
+
+- **A Handled mark holds the newest message it covers** (email: the time of the message he was waiting on; Slack: its ts, kept as the exact text since a double loses digits), and lapses when a newer one arrives, as in the artifact. Old artifact marks keyed by channel alone became `<channel>~main`.
+- **Sync is small, not LabOps' `SyncService`:** `DataSync` commits at once, fetches, rebases onto `origin/main` and pushes; offline the commit waits; on a conflict this machine's commits go to `set-aside/<machine>-<time>` and main takes the remote's. A change is pushed four seconds after the last edit, so a burst of edits is one commit.
+- **Reorder is Up/Down (and Alt+arrows)**, one file per move; drag and drop is still to come. Saving a task captured from a message marks the message handled (the artifact's rule). Claude's help drafting the task's title and notes (the artifact's capture brief) comes with phase 5.
+- **Verdicts and briefs are not in git yet**: verdicts stay in each machine's cache until the shared nightly jobs (phase 6) need them.
 
 ## Open decisions
 

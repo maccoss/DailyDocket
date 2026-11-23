@@ -5,6 +5,8 @@ using DailyDocket.Core.Configuration;
 using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Jobs;
 using DailyDocket.Core.Processes;
+using DailyDocket.Core.Sync;
+using DailyDocket.Core.Todos;
 using DailyDocket.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -46,6 +48,14 @@ public static class Program
                 AppInfo.ProductName, AppInfo.InformationalVersion, AppInfo.RuntimeIdentifier, AppInfo.MachineName, paths.Root);
 
             using var services = BuildServiceProvider(paths);
+
+            // One-time move from the dashboard artifact: DailyDocket.exe --import-artifact <folder>,
+            // where the folder holds its database exported as todos/, handled/ and slackHandled/.
+            if (args.Length == 2 && args[0] == "--import-artifact")
+            {
+                return ImportArtifact(services, args[1]);
+            }
+
             var app = new App(services, instance);
             app.InitializeComponent();
             return app.Run();
@@ -64,8 +74,43 @@ public static class Program
         }
     }
 
-    /// <summary>The file holding the owner's details until the data repository is cloned (phase 3).</summary>
+    /// <summary>The file holding the owner's details until the data repository is cloned.</summary>
     internal static string ConfigFile(AppPaths paths) => Path.Combine(paths.Root, "docket.yaml");
+
+    internal static string RepositoryPath(AppPaths paths, AppSettings settings) =>
+        string.IsNullOrWhiteSpace(settings.TodoRepositoryPath) ? paths.TodoRepositoryDirectory : settings.TodoRepositoryPath;
+
+    private static int ImportArtifact(ServiceProvider services, string folder)
+    {
+        var book = services.GetRequiredService<TodoBook>();
+        var settings = services.GetRequiredService<AppSettings>();
+        string message;
+        try
+        {
+            var problem = book.Sync.EnsureClonedAsync(settings.DataRepositoryUrl).GetAwaiter().GetResult();
+            if (problem is not null)
+            {
+                message = problem;
+            }
+            else
+            {
+                var result = ArtifactImport.Import(folder, book.Repository, AppInfo.MachineName, DateTimeOffset.Now);
+                var adopted = services.GetRequiredService<ConfigSource>().AdoptIntoRepository();
+                var sync = book.Sync.SyncAsync($"Import the dashboard artifact's to-dos ({result.Todos}) and Handled marks ({result.EmailHandled + result.SlackHandled})").GetAwaiter().GetResult();
+                message = $"Imported {result.Todos} to-dos, {result.EmailHandled} email and {result.SlackHandled} Slack Handled marks ({result.Skipped} skipped)"
+                    + (adopted ? ", and moved docket.yaml into the data repository" : "") + ". "
+                    + (sync.Ok && !sync.Offline ? "Pushed to GitHub." : sync.Problem ?? "Saved on this computer; it will push at the next sync.");
+            }
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            message = $"The import failed: {e.Message}";
+        }
+
+        Serilog.Log.Information("Artifact import: {Message}", message);
+        MessageBox.Show(message, AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+        return 0;
+    }
 
     /// <summary>
     /// Wires everything the window needs. Internal so a test can build it: a missing registration
@@ -83,7 +128,23 @@ public static class Program
 
         services.AddSingleton(provider => new SettingsStore(paths.SettingsFile, provider.GetRequiredService<ILogger<SettingsStore>>()));
         services.AddSingleton(provider => provider.GetRequiredService<SettingsStore>().Load());
-        services.AddSingleton(new ConfigSource(ConfigFile(paths)));
+        services.AddSingleton(provider =>
+        {
+            var repo = RepositoryPath(paths, provider.GetRequiredService<AppSettings>());
+            return new ConfigSource(Path.Combine(repo, "config", "docket.yaml"), ConfigFile(paths));
+        });
+        services.AddSingleton(provider => new DataRepository(RepositoryPath(paths, provider.GetRequiredService<AppSettings>())));
+        services.AddSingleton(provider => new DataSync(
+            provider.GetRequiredService<ProcessRunner>(),
+            provider.GetRequiredService<ToolLocator>(),
+            RepositoryPath(paths, provider.GetRequiredService<AppSettings>()),
+            AppInfo.MachineName,
+            provider.GetRequiredService<ILogger<DataSync>>()));
+        services.AddSingleton(provider => new TodoBook(
+            provider.GetRequiredService<DataRepository>(),
+            provider.GetRequiredService<DataSync>(),
+            AppInfo.MachineName,
+            provider.GetRequiredService<ILogger<TodoBook>>()));
         services.AddSingleton<Func<DocketConfig>>(provider => provider.GetRequiredService<ConfigSource>().Get);
         services.AddSingleton<Func<AppSettings>>(provider => provider.GetRequiredService<AppSettings>);
 
@@ -94,7 +155,11 @@ public static class Program
             var config = provider.GetRequiredService<Func<DocketConfig>>();
             return new CaptureIngestor(provider.GetRequiredService<DocketDatabase>(), config, provider.GetRequiredService<ConfigSource>().Zone);
         });
-        services.AddSingleton<JobStore>();
+        services.AddSingleton(provider => new JobStore(
+            provider.GetRequiredService<Store>(),
+            provider.GetRequiredService<CaptureIngestor>(),
+            provider.GetRequiredService<Func<DocketConfig>>(),
+            () => provider.GetRequiredService<TodoBook>().Handled));
         services.AddSingleton<IJobStore>(provider => provider.GetRequiredService<JobStore>());
 
         services.AddSingleton<ToolLocator>();
@@ -109,6 +174,7 @@ public static class Program
             provider.GetRequiredService<ILogger<JobRunner>>()));
         services.AddSingleton<SyncScheduler>();
 
+        services.AddSingleton<TodoViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
         return services.BuildServiceProvider();
