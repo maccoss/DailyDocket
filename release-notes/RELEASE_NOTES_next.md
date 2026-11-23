@@ -159,6 +159,8 @@ impact first, empty headings deleted at release.
   has been disposed." The window's cleanup ran twice on exit (`src/DailyDocket.App/ViewModels/MainViewModel.cs`),
   and a problem while cleaning up is now logged rather than reported as a failed start.
 
+- A meeting whose invitation came from another calendar system could have an event id too long for Git on Windows to save as a file name, and once its brief was written every later to-do sync failed. Such a brief is now saved under a short name.
+
 ## Performance
 
 ## Breaking Changes

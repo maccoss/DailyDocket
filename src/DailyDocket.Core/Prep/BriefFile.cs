@@ -36,7 +36,25 @@ public static partial class BriefFile
 
     /// <summary>briefs/&lt;local date&gt;/&lt;eventId&gt;.md; the event id is checked, since it becomes a path.</summary>
     public static string PathFor(string repositoryRoot, DateOnly date, string eventId) =>
-        Path.Combine(Folder(repositoryRoot), date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), $"{DataRepository.SafeName(eventId)}.md");
+        Path.Combine(Folder(repositoryRoot), date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), $"{FileName(eventId)}.md");
+
+    /// <summary>
+    /// The event id, or for a long one its start and a hash. Some invitations from other systems
+    /// have ids of 200 or more characters, past what Git for Windows can open under the app's data
+    /// folder (seen on the first nightly run: every data sync failed after). The brief holds its
+    /// full event id, which is what <see cref="LoadDays"/> keys on, so the name only has to be unique.
+    /// </summary>
+    internal static string FileName(string eventId)
+    {
+        var safe = DataRepository.SafeName(eventId);
+        if (safe.Length <= 64)
+        {
+            return safe;
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(safe)))[..16].ToLowerInvariant();
+        return $"{safe[..32]}-{hash}";
+    }
 
     public static MeetingBrief? Load(string repositoryRoot, DateOnly date, string eventId)
     {

@@ -202,6 +202,28 @@ public sealed class PrepTests
     }
 
     [Fact]
+    public void A_long_event_id_gets_a_short_file_name_and_still_loads_by_its_id()
+    {
+        var root = Directory.CreateTempSubdirectory("dd-brief-").FullName;
+        try
+        {
+            var id = "_" + new string('6', 120) + "0q30c1g8513ee1k84o3idpk64o48h1g64";
+            var other = "_" + new string('6', 120) + "different-tail";
+            BriefFile.Save(root, new DateOnly(2026, 11, 23), Brief(id));
+            BriefFile.Save(root, new DateOnly(2026, 11, 23), Brief(other));
+
+            var names = Directory.GetFiles(Path.Combine(root, "briefs", "2026-11-23")).Select(Path.GetFileName).ToList();
+            names.Count.ShouldBe(2);
+            names.ShouldAllBe(n => n!.Length <= 64 + 3);
+            BriefFile.LoadDays(root, [new DateOnly(2026, 11, 23)]).Keys.ShouldBe([id, other], ignoreOrder: true);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Write_brief_saves_only_the_meeting_the_run_was_given()
     {
         var run = new FakeRun(Target("e1"));
