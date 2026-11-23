@@ -55,7 +55,7 @@ public sealed class ScheduleSmokeTests
         var paths = new AppPaths(root);
         paths.EnsureCreated();
         var repo = Path.Combine(root, "repo");
-        File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { DataRepositoryUrl = "", TodoRepositoryPath = repo, Notifications = false }));
+        File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { DataRepositoryUrl = "", TodoRepositoryPath = repo, Notifications = false, OpenSetupAtStartup = false }));
 
         var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         var tomorrow = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).DateTime).AddDays(1);

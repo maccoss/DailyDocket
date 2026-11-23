@@ -24,7 +24,11 @@ public static class Program
     public static int Main(string[] args)
     {
         // Must be first. On an install, update or uninstall hook this call never returns.
-        VelopackApp.Build().OnRestarted(_ => UpdateService.RestartedByInstaller = true).Run();
+        VelopackApp.Build().OnRestarted(_ =>
+        {
+            UpdateService.RestartedByInstaller = true;
+            IconRefresh.Request();
+        }).Run();
 
         // DAILYDOCKET_DATA points the app at another data folder, for development.
         var paths = new AppPaths(Environment.GetEnvironmentVariable("DAILYDOCKET_DATA"));
@@ -206,6 +210,7 @@ public static class Program
         });
 
         services.AddSingleton(provider => new SetupChecks(provider.GetRequiredService<ProcessRunner>(), provider.GetRequiredService<ToolLocator>()));
+        services.AddSingleton(provider => new DailyDocket.Core.Claude.ClaudeLogin(provider.GetRequiredService<ToolLocator>()));
         services.AddSingleton<UpdateService>();
         services.AddSingleton<UpdateBarViewModel>();
         SharedJobs.Register(services);

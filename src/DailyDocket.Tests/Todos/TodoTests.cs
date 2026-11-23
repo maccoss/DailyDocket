@@ -169,6 +169,49 @@ public sealed class TodoTests : IDisposable
     }
 
     [Fact]
+    public async Task A_clone_cut_off_partway_is_not_taken_for_a_clone_and_switching_repositories_moves_the_old_one_aside()
+    {
+        var tools = new ToolLocator();
+        var runner = new ProcessRunner(tools);
+        var bare = Path.Combine(_dir, "remote.git");
+        await new GitClient(runner, tools) { RepositoryPath = _dir }.RequireAsync(["init", "--bare", "--initial-branch=main", bare]);
+        var sync = new DataSync(runner, tools, Path.Combine(_dir, "data"), "pillar");
+
+        // What an interrupted clone leaves beside the folder, and a clone that fails.
+        Directory.CreateDirectory(Path.Combine(sync.RepositoryPath + ".cloning", ".git"));
+        (await sync.EnsureClonedAsync(new Uri(Path.Combine(_dir, "missing.git")).AbsoluteUri)).ShouldNotBeNull();
+        sync.IsCloned.ShouldBeFalse();
+        Directory.Exists(sync.RepositoryPath + ".cloning").ShouldBeFalse();
+
+        (await sync.EnsureClonedAsync(new Uri(bare).AbsoluteUri)).ShouldBeNull();
+        sync.IsCloned.ShouldBeTrue();
+        (await sync.OriginAsync()).ShouldNotBeNull();
+
+        // Nothing unsent: moved aside, not deleted.
+        await Identify(runner, tools, sync.RepositoryPath);
+        new DataRepository(sync.RepositoryPath).Save(Task("t1"));
+        (await sync.SyncAsync("Add a task")).Ok.ShouldBeTrue();
+        (await sync.SetAsideAsync()).ShouldBeNull();
+        sync.IsCloned.ShouldBeFalse();
+        Directory.GetDirectories(_dir, "data.previous-*").ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task A_repository_with_unsent_changes_is_not_moved_aside()
+    {
+        var tools = new ToolLocator();
+        var runner = new ProcessRunner(tools);
+        var bare = Path.Combine(_dir, "remote.git");
+        await new GitClient(runner, tools) { RepositoryPath = _dir }.RequireAsync(["init", "--bare", "--initial-branch=main", bare]);
+        var sync = new DataSync(runner, tools, Path.Combine(_dir, "data"), "pillar");
+        (await sync.EnsureClonedAsync(new Uri(bare).AbsoluteUri)).ShouldBeNull();
+        new DataRepository(sync.RepositoryPath).Save(Task("t1"));
+
+        (await sync.SetAsideAsync()).ShouldNotBeNull();
+        sync.IsCloned.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Two_machines_sync_through_the_remote_and_a_conflict_is_set_aside()
     {
         var tools = new ToolLocator();

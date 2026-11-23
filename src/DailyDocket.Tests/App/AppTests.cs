@@ -25,6 +25,7 @@ public sealed class AppTests
                 services.GetRequiredService<SyncScheduler>().ShouldNotBeNull();
                 services.GetRequiredService<UpdateBarViewModel>().ShouldNotBeNull();
                 services.GetRequiredService<DailyDocket.Core.Setup.SetupChecks>().ShouldNotBeNull();
+                services.GetRequiredService<DailyDocket.Core.Claude.ClaudeLogin>().ShouldNotBeNull();
             }
 
             SqliteConnection.ClearAllPools();
