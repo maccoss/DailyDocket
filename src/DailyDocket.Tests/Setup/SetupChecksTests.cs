@@ -302,4 +302,23 @@ public sealed class UpdatePolicyTests
         UpdatePolicy.NoteFor(ready).ShouldBeNull();
         UpdatePolicy.NoteFor(new UpdateStatus(UpdateStage.Failed, Error: "No such host is known.")).ShouldBeNull();
     }
+
+    [Fact]
+    public void A_copy_older_than_its_database_says_what_it_is_doing_and_how_it_ended()
+    {
+        const string Releases = "https://example.org/releases/latest";
+
+        UpdatePolicy.TooNewProgress(new UpdateStatus(UpdateStage.Checking)).ShouldEndWith("Looking for the update.");
+        UpdatePolicy.TooNewProgress(new UpdateStatus(UpdateStage.Downloading, "26.3.3", 40)).ShouldEndWith("Downloading update 26.3.3: 40%");
+
+        UpdatePolicy.TooNewOutcome(new UpdateStatus(UpdateStage.ReadyToApply, "26.3.3", 100), Releases)
+            .ShouldContain("Update 26.3.3 is downloaded. Press OK to install it");
+        // Offline, or no newer release on the channel: it says where to get one and that nothing is lost.
+        var failed = UpdatePolicy.TooNewOutcome(new UpdateStatus(UpdateStage.Failed, Error: "No such host is known."), Releases);
+        failed.ShouldContain("(No such host is known.)");
+        failed.ShouldContain(Releases);
+        failed.ShouldContain("Nothing is lost");
+        UpdatePolicy.TooNewOutcome(new UpdateStatus(UpdateStage.UpToDate), Releases).ShouldContain(Releases);
+        UpdatePolicy.TooNewOutcome(new UpdateStatus(UpdateStage.NotInstalled), Releases).ShouldContain("development build");
+    }
 }

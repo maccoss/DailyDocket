@@ -67,4 +67,32 @@ public static class UpdatePolicy
     /// </summary>
     public static string? NoteFor(UpdateStatus status) =>
         status.Stage == UpdateStage.ReadyToApply ? status.Error : null;
+
+    private const string TooNew = "This computer's DailyDocket database was written by a newer version of DailyDocket than this one";
+
+    /// <summary>
+    /// What the small window says while a copy whose database is too new looks for the update it
+    /// needs. That copy cannot open its window, so this is all Mike sees until the check ends.
+    /// </summary>
+    public static string TooNewProgress(UpdateStatus status) => status.Stage switch
+    {
+        UpdateStage.Downloading => $"{TooNew}. Downloading update {status.AvailableVersion}: {status.DownloadPercent}%",
+        _ => $"{TooNew}. Looking for the update.",
+    };
+
+    /// <summary>
+    /// What to tell Mike once that check ends. With the update downloaded it installs right away:
+    /// the usual rule of waiting for his Restart is there so nothing he is writing is lost, and a
+    /// copy that cannot open has nothing open.
+    /// </summary>
+    public static string TooNewOutcome(UpdateStatus status, string releasesUrl) => status.Stage switch
+    {
+        UpdateStage.ReadyToApply =>
+            $"{TooNew}. Update {status.AvailableVersion} is downloaded. Press OK to install it; DailyDocket starts again when it is done.",
+        UpdateStage.NotInstalled =>
+            $"{TooNew}. This is a development build, which does not update itself: build or install the newer version, then start it again.",
+        _ => $"{TooNew}, and no update could be downloaded"
+            + (status.Error is null ? "" : $" ({status.Error})")
+            + $". Install the latest DailyDocket from {releasesUrl}, then start it again. Nothing is lost: the database and the outbox are kept.",
+    };
 }
