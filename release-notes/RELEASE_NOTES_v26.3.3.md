@@ -14,6 +14,10 @@ holds up the rest.
   (`src/DailyDocket.Hook/Capture.cs`, `src/DailyDocket.Core/Jobs/JobRunner.cs`,
   `src/DailyDocket.Data/Store.cs`).
 
+- **A Zoom meeting made with the Zoom add-on for Google Calendar had no join link** on the
+  Schedule. Calendar's connector puts that link where DailyDocket did not look; it now does
+  (`src/DailyDocket.Core/Calendar/CalendarParser.cs`).
+
 - **Your own Slack messages could show under a colleague's name.** When Slack gave one of your
   messages no name, DailyDocket took the name from a later message in the same result. It now
   uses the name Slack gives that person elsewhere in the result
