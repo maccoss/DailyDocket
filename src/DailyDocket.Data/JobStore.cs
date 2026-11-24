@@ -23,7 +23,7 @@ public sealed class JobStore : IJobStore
 
     public int IngestFolder(string runId, string folder) => _ingestor.IngestFolder(runId, folder);
 
-    public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max) => _store.ThreadsToRead(seenSince, max);
+    public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max) => _store.ThreadsToRead(seenSince, now, max);
 
     /// <summary>Mail first (it is where live requests are), then Slack, newest first within each.</summary>
     public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max)

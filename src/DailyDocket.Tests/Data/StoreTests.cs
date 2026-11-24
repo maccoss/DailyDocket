@@ -61,21 +61,89 @@ public sealed class StoreTests : IDisposable
 
         var reopened = new Store(DocketDatabase.Open(_db.Path, "another-key"));
 
-        reopened.ThreadsToRead(Now.AddDays(-30), 10).ShouldBeEmpty();
+        reopened.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBeEmpty();
     }
 
     [Fact]
     public void A_searched_thread_is_read_once_until_a_newer_message_arrives()
     {
         Ingest(Search, new { query = "in:inbox newer_than:30d", view = "THREAD_VIEW_SUMMARY" }, Fixture.Read("gmail-search-summary.json"));
-        _store.ThreadsToRead(Now.AddDays(-30), 10).ShouldBe(["thread-a", "thread-b"], ignoreOrder: true);
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBe(["thread-a", "thread-b"], ignoreOrder: true);
 
         Ingest(GetThread, new { threadId = "thread-a" }, Fixture.Read("gmail-thread.json"));
-        _store.ThreadsToRead(Now.AddDays(-30), 10).ShouldBe(["thread-b"]);
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBe(["thread-b"]);
 
         var newer = Fixture.Read("gmail-search-summary.json").Replace("\"msg-a3\"", "\"msg-a4\"", StringComparison.Ordinal);
         Ingest(Search, new { query = "in:inbox newer_than:30d" }, newer);
-        _store.ThreadsToRead(Now.AddDays(-30), 10).ShouldContain("thread-a");
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldContain("thread-a");
+    }
+
+    [Fact]
+    public void A_search_naming_a_message_already_read_does_not_read_the_thread_again()
+    {
+        // The search names one matching message, often an older one: Gmail named a thread's first
+        // message long after two more had arrived. That is not news, and once it read every
+        // answered thread three times a pull.
+        Ingest(Search, new { query = "in:inbox newer_than:30d" }, Fixture.Read("gmail-search-summary.json"));
+        Ingest(GetThread, new { threadId = "thread-a" }, Fixture.Read("gmail-thread.json"));
+        var older = Fixture.Read("gmail-search-summary.json").Replace("\"msg-a3\"", "\"msg-a1\"", StringComparison.Ordinal);
+        Ingest(Search, new { query = "in:inbox newer_than:30d" }, older);
+
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldNotContain("thread-a");
+    }
+
+    [Fact]
+    public void A_thread_he_may_owe_is_read_again_so_a_reply_sent_from_Gmail_clears_it()
+    {
+        // His reply from Gmail is in Sent, so the inbox search never names it.
+        Ingest(Search, new { query = "in:inbox newer_than:30d" }, Fixture.Read("gmail-search-summary.json"));
+        Ingest(GetThread, new { threadId = "thread-a" }, Fixture.Read("gmail-thread.json"));
+        _store.ThreadsToRead(Now.AddDays(-30), Now.AddMinutes(5), 10).ShouldNotContain("thread-a");
+        _store.ThreadsToRead(Now.AddDays(-30), Now.AddMinutes(11), 10).ShouldContain("thread-a");
+
+        _ingestor.Ingest("run-2", new CapturedCall(GetThread, JsonSerializer.SerializeToElement(new { threadId = "thread-a" }), Answered(), "toolu_answered", "s", Now.AddMinutes(11))).ShouldBeTrue();
+
+        _store.MailRows(Now.AddDays(-30)).Rows.ShouldBeEmpty();
+        _store.ThreadsToRead(Now.AddDays(-30), Now.AddMinutes(25), 10).ShouldNotContain("thread-a");
+
+        // Answered, but active in the last two days: someone may write again the same day, and
+        // the search may not name that either. Read again, less often.
+        _store.ThreadsToRead(Now.AddDays(-30), Now.AddMinutes(45), 10).ShouldContain("thread-a");
+
+        // Quiet for two days: only a search naming a new message brings it back.
+        _store.ThreadsToRead(Now.AddDays(-30), Now.AddDays(5), 10).ShouldNotContain("thread-a");
+    }
+
+    [Fact]
+    public void A_reply_he_sent_from_Gmail_has_its_thread_read_on_the_same_pull()
+    {
+        Ingest(Search, new { query = "in:inbox newer_than:30d" }, Fixture.Read("gmail-search-summary.json"));
+        Ingest(GetThread, new { threadId = "thread-a" }, Fixture.Read("gmail-thread.json"));
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldNotContain("thread-a");
+
+        // A Sent search naming a message already read says nothing new.
+        var known = Fixture.Read("gmail-search-summary.json").Replace("\"msg-a3\"", "\"msg-a2\"", StringComparison.Ordinal);
+        Ingest(Search, new { query = "in:sent after:2026/11/21 before:2026/11/22" }, known);
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldNotContain("thread-a");
+
+        // One naming his new reply has the thread read now, even when an inbox search naming an
+        // old message is taken in after it.
+        var mine = Fixture.Read("gmail-search-summary.json").Replace("\"msg-a3\"", "\"msg-a4\"", StringComparison.Ordinal);
+        Ingest(Search, new { query = "in:sent after:2026/11/21 before:2026/11/22" }, mine);
+        Ingest(Search, new { query = "in:inbox newer_than:30d" }, Fixture.Read("gmail-search-summary.json"));
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldContain("thread-a");
+
+        _ingestor.Ingest("run-2", new CapturedCall(GetThread, JsonSerializer.SerializeToElement(new { threadId = "thread-a" }), Answered(), "toolu_answered", "s", Now)).ShouldBeTrue();
+        _store.MailRows(Now.AddDays(-30)).Rows.ShouldBeEmpty();
+    }
+
+    /// <summary>thread-a with his answer to Pat's last message.</summary>
+    private static string Answered()
+    {
+        var thread = JsonNode.Parse(Fixture.Read("gmail-thread.json"))!.AsObject();
+        thread["messages"]!.AsArray().Add(JsonNode.Parse(
+            """{"id":"msg-a4","threadId":"thread-a","sender":"owner@example.org","toRecipients":["pat@example.org"],"date":"2026-11-20T18:00:00Z","internalDate":"1795456800000","labelIds":["SENT"],"subject":"Re: QC report","snippet":"Median.","plaintextBody":"Median."}"""));
+        return thread.ToJsonString();
     }
 
     [Fact]
@@ -83,7 +151,7 @@ public sealed class StoreTests : IDisposable
     {
         Ingest(Search, new { query = "in:sent newer_than:7d" }, Fixture.Read("gmail-search-summary.json"));
 
-        _store.ThreadsToRead(Now.AddDays(-30), 10).ShouldBeEmpty();
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBeEmpty();
     }
 
     [Fact]

@@ -396,8 +396,8 @@ public sealed class JobRunner
         {
             // The searches this run just made are on disk; take them in first.
             _store.IngestFolder(_runId, _captures);
-            var seenSince = DateTimeOffset.UtcNow.AddDays(-_config().Mail.WindowDays);
-            return _store.ThreadsToRead(seenSince, JobPlans.ThreadsPerRun);
+            var now = DateTimeOffset.UtcNow;
+            return _store.ThreadsToRead(now.AddDays(-_config().Mail.WindowDays), now, JobPlans.ThreadsPerRun);
         }
 
         private int _triageServed;

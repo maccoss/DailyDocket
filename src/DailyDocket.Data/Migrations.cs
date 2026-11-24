@@ -11,7 +11,13 @@ namespace DailyDocket.Data;
 /// </remarks>
 internal static class Migrations
 {
-    public const int Current = 4;
+    public const int Current = 5;
+
+    /// <summary>
+    /// Version 5: when a thread was last read, so threads he may owe are read again on a timer
+    /// (Store.ThreadsToRead). Existing rows get null, which reads each of them once more.
+    /// </summary>
+    private const string ReadTimeStep = "ALTER TABLE email_thread ADD COLUMN read_utc TEXT;";
 
     /// <summary>
     /// Version 4: the meeting's join link (Zoom, Teams, Meet, Webex). Existing rows get null until
@@ -80,9 +86,9 @@ internal static class Migrations
         );
         CREATE INDEX calendar_event_start ON calendar_event (start_utc);
 
-        -- One row per thread seen in an inbox search. newest_message_id comes from the search;
-        -- read_message_id is the newest message the last get_thread saw. They differ when the
-        -- thread needs reading again.
+        -- One row per thread seen in an inbox search. newest_message_id is the message the search
+        -- named (not always the newest); read_message_id is the newest message the last get_thread
+        -- saw, at read_utc.
         CREATE TABLE email_thread (
             thread_id         TEXT PRIMARY KEY,
             newest_message_id TEXT NOT NULL,
@@ -97,7 +103,8 @@ internal static class Migrations
             waiting_since_utc TEXT,
             waiting_on        TEXT,
             snippet           TEXT,
-            unread            INTEGER
+            unread            INTEGER,
+            read_utc          TEXT
         );
 
         CREATE TABLE email_message (
@@ -196,7 +203,7 @@ internal static class Migrations
         }
 
         using var tx = c.BeginTransaction();
-        if (version is 1 or 2 or 3)
+        if (version is 1 or 2 or 3 or 4)
         {
             // The cache stays; each step adds what its version brought.
             if (version == 1)
@@ -213,6 +220,11 @@ internal static class Migrations
             if (!columns.Contains("join_link"))
             {
                 c.Execute(JoinLinkStep, transaction: tx);
+            }
+
+            if (!c.Query<string>("SELECT name FROM pragma_table_info('email_thread');", transaction: tx).Contains("read_utc"))
+            {
+                c.Execute(ReadTimeStep, transaction: tx);
             }
 
             c.Execute($"PRAGMA user_version = {Current};", transaction: tx);

@@ -69,19 +69,58 @@ public sealed class Store
 
     // ---- mail ---------------------------------------------------------------------
 
-    /// <summary>Threads a pull must read: new, or with a newer message than the last read saw.</summary>
-    public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max)
+    /// <summary>How long a thread on the Email tab goes without a fresh read.</summary>
+    public static readonly TimeSpan OwedRecheck = TimeSpan.FromMinutes(10);
+
+    /// <summary>How long any other recently active thread goes without a fresh read.</summary>
+    public static readonly TimeSpan RecentRecheck = TimeSpan.FromMinutes(30);
+
+    /// <summary>How recent a thread's newest message must be for it to be read again on a timer.</summary>
+    public static readonly TimeSpan RecentActivity = TimeSpan.FromDays(2);
+
+    /// <summary>
+    /// Threads a pull must read: new ones, ones whose search named a message no read has seen, and
+    /// ones due for a fresh read. The first two come first.
+    /// </summary>
+    /// <remarks>
+    /// A search cannot be trusted to show that a thread moved on. It names one matching message,
+    /// not the thread's newest, and it never names a reply he sent from Gmail, since the sweep
+    /// searches the inbox: a thread he answered there stayed on the tab, and so did one where the
+    /// answer to his reply ("Thanks") went unmatched for hours (November 2026). So a thread he may
+    /// owe, or one with a message in the last two days, is read again every few pulls. The search's
+    /// message counts only when no read has stored it; comparing it with the newest message read,
+    /// as before, read every thread he had answered three times a pull, forever.
+    /// </remarks>
+    public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max)
     {
         using var c = _db.Connect();
         return
         [
             .. c.Query<string>(
                 """
-                SELECT thread_id FROM email_thread
-                WHERE seen_utc >= @since AND (read_message_id IS NULL OR read_message_id <> newest_message_id)
-                ORDER BY seen_utc DESC LIMIT @max
+                SELECT t.thread_id FROM email_thread t
+                LEFT JOIN verdict v ON v.source = 'mail' AND v.item_key = t.thread_id
+                WHERE t.seen_utc >= @since AND (
+                    t.read_message_id IS NULL
+                    OR NOT EXISTS (SELECT 1 FROM email_message m WHERE m.message_id = t.newest_message_id)
+                    OR ((t.category = 'Draft' OR (t.category = 'Open' AND (v.needs_reply IS NULL OR v.needs_reply = 1)))
+                        AND (t.read_utc IS NULL OR t.read_utc < @owedBefore))
+                    OR (t.category IN ('Open', 'LastWord', 'Informed')
+                        AND EXISTS (SELECT 1 FROM email_message m WHERE m.thread_id = t.thread_id AND m.date_utc >= @recent)
+                        AND (t.read_utc IS NULL OR t.read_utc < @recentBefore)))
+                ORDER BY CASE WHEN t.read_message_id IS NULL
+                    OR NOT EXISTS (SELECT 1 FROM email_message m WHERE m.message_id = t.newest_message_id) THEN 0 ELSE 1 END,
+                    t.seen_utc DESC
+                LIMIT @max
                 """,
-                new { since = DocketDatabase.Iso(seenSince), max }),
+                new
+                {
+                    since = DocketDatabase.Iso(seenSince),
+                    owedBefore = DocketDatabase.Iso(now - OwedRecheck),
+                    recentBefore = DocketDatabase.Iso(now - RecentRecheck),
+                    recent = DocketDatabase.Iso(now - RecentActivity),
+                    max,
+                }),
         ];
     }
 

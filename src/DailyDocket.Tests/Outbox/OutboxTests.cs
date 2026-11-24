@@ -349,4 +349,32 @@ public sealed class OutboxTests : IDisposable
         e.JoinLink.ShouldBeNull();
         new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
     }
+
+    [Fact]
+    public void Adding_the_read_time_keeps_the_cache_and_the_outbox_and_reads_each_thread_once_more()
+    {
+        var path = Path.Combine(_dir, "v4.db");
+        var db = DocketDatabase.Open(path, "k");
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                ALTER TABLE email_thread DROP COLUMN read_utc;
+                INSERT INTO email_thread (thread_id, newest_message_id, read_message_id, message_count, seen_utc, category)
+                    VALUES ('t1', 'm1', 'm1', 1, '2026-11-23T18:00:00.0000000Z', 'Open');
+                INSERT INTO email_message (message_id, thread_id, sender, to_list, cc_list, date_utc, labels)
+                    VALUES ('m1', 't1', 'pat@example.org', '[]', '[]', '2026-11-23T17:00:00.0000000Z', '[]');
+                PRAGMA user_version = 4;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        new OutboxStore(db, null).Save(Email());
+        SqliteConnection.ClearAllPools();
+        var again = new Store(DocketDatabase.Open(path, "k"));
+
+        var now = new DateTimeOffset(2026, 11, 23, 19, 0, 0, TimeSpan.Zero);
+        again.ThreadsToRead(now.AddDays(-30), now, 10).ShouldBe(["t1"]);
+        new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
+    }
 }

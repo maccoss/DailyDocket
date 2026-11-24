@@ -101,6 +101,9 @@ public static partial class JobPlans
         return $"in:inbox -category:promotions -category:updates -category:social {forums}";
     }
 
+    /// <summary>His sent mail, without its dates. It never adds a thread to the Email tab (CaptureIngestor).</summary>
+    internal const string SentQuery = "in:sent";
+
     [System.Text.RegularExpressions.GeneratedRegex(@"^[^\s""'{}()]+@[^\s""'{}()]+$")]
     private static partial System.Text.RegularExpressions.Regex GroupAddress();
 
@@ -146,7 +149,12 @@ public static partial class JobPlans
         var full = IsDue(lastFullSweep, now);
         var days = full ? config.Mail.WindowDays : IncrementalDays;
         string[] tools = [ConnectorTools.SearchThreads, ConnectorTools.ListDrafts, ConnectorTools.GetThread, AppTools.ThreadsToReadToolName];
-        var searches = string.Join('\n', DaySearches(now, zone, InboxQuery(config.Mail), days, 0).Select(a => "   - " + a));
+        // His Sent mail for the last few days too, as the dashboard artifact did: the inbox search
+        // never names a reply he sent from Gmail, and a Sent hit on a thread the app knows has it
+        // read again at once rather than at its next timed read (Store.ThreadsToRead).
+        var searches = string.Join('\n', DaySearches(now, zone, InboxQuery(config.Mail), days, 0)
+            .Concat(DaySearches(now, zone, SentQuery, IncrementalDays, 0))
+            .Select(a => "   - " + a));
         var drafts = JsonSerializer.Serialize(new { pageSize = 50, view = "DRAFT_VIEW_METADATA_ONLY" }, Json);
 
         var prompt = Preamble("mail pull", tools) +

@@ -58,7 +58,7 @@ public sealed class LivePullTests(ITestOutputHelper output)
         var (mail, counts) = store.MailRows(jobs.MailSince(now));
         var slack = store.SlackRows(config, jobs.SlackSince(now));
         output.WriteLine($"schedule days={schedule.Count} events={schedule.Sum(d => d.Slots.Count + d.Background.Count)}");
-        output.WriteLine($"mail owed={counts.Owed} reading={counts.Reading} quiet={counts.Quiet} drafts={mail.Count(m => m.State == "Draft")} toRead={store.ThreadsToRead(now.AddDays(-30), 1000).Count}");
+        output.WriteLine($"mail owed={counts.Owed} reading={counts.Reading} quiet={counts.Quiet} drafts={mail.Count(m => m.State == "Draft")} toRead={store.ThreadsToRead(now.AddDays(-30), now, 1000).Count}");
         output.WriteLine($"slack owed={slack.Count(s => s.State == "Owed")} reading={slack.Count(s => s.State == "Reading")}");
         output.WriteLine($"data folder: {root}");
 
