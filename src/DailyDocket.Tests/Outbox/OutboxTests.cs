@@ -404,4 +404,30 @@ public sealed class OutboxTests : IDisposable
         again.ThreadsToRead(now.AddDays(-30), now, 10).ShouldBe(["t1"]);
         new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
     }
+
+    [Fact]
+    public void Adding_the_read_failures_keeps_the_cache_and_the_outbox()
+    {
+        var path = Path.Combine(_dir, "v5.db");
+        var db = DocketDatabase.Open(path, "k");
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                ALTER TABLE email_thread DROP COLUMN read_failures;
+                INSERT INTO email_thread (thread_id, newest_message_id, message_count, seen_utc)
+                    VALUES ('t1', 'm1', 1, '2026-11-23T18:00:00.0000000Z');
+                PRAGMA user_version = 5;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        new OutboxStore(db, null).Save(Email());
+        SqliteConnection.ClearAllPools();
+        var again = new Store(DocketDatabase.Open(path, "k"));
+
+        var now = new DateTimeOffset(2026, 11, 23, 19, 0, 0, TimeSpan.Zero);
+        again.ThreadsToRead(now.AddDays(-30), now, 10).ShouldBe(["t1"]);
+        new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
+    }
 }

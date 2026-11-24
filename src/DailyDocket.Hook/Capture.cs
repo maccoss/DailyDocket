@@ -20,8 +20,14 @@ internal static partial class Capture
 
     private const int MaxIds = 60;
 
+    /// <summary>Where Claude Code keeps the results it was too big to pass on: under ~/.claude.</summary>
+    internal static readonly string ClaudeHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+
     /// <summary>Saves <paramref name="input"/> and returns the hook's stdout, or null for none.</summary>
-    public static string? Run(string input, string directory, bool receipt, DateTimeOffset now)
+    public static string? Run(string input, string directory, bool receipt, DateTimeOffset now) =>
+        Run(input, directory, receipt, now, ClaudeHome);
+
+    internal static string? Run(string input, string directory, bool receipt, DateTimeOffset now, string claudeHome)
     {
         var node = JsonNode.Parse(input) ?? throw new JsonException("The hook input is empty.");
         var toolUseId = node["tool_use_id"]?.GetValue<string>() ?? Guid.NewGuid().ToString("N");
@@ -31,7 +37,15 @@ internal static partial class Capture
         var path = Path.Combine(directory, name);
         var temp = path + ".tmp";
 
-        // Verbatim: the parsers are tested against exactly what the connector returned.
+        // Verbatim: the parsers are tested against exactly what the connector returned. The one
+        // exception is a result Claude Code found too big to pass on: it hands the hook a note
+        // naming the file it saved the result in, and the result is put back from that file.
+        if (SavedResult(node["tool_response"], claudeHome) is { } saved)
+        {
+            node["tool_response"] = saved;
+            input = node.ToJsonString();
+        }
+
         File.WriteAllText(temp, input, new UTF8Encoding(false));
         File.Move(temp, path, overwrite: true);
 
@@ -51,6 +65,47 @@ internal static partial class Capture
             },
         };
         return output.ToJsonString();
+    }
+
+    /// <summary>
+    /// The full result, when <paramref name="response"/> is Claude Code's note that a result
+    /// "exceeds maximum allowed tokens" and was saved to a file; otherwise null.
+    /// </summary>
+    /// <remarks>
+    /// Without this a long email thread was saved as the note itself, never counted as read, and
+    /// asked for again on every pull: 39 such threads took all of each pull's reads and about 600
+    /// others waited behind them (November 2026). The runs raise the limit
+    /// (JobRunner.Environment), so this is the fallback for a thread larger still. Only a file in a
+    /// tool-results folder under ~/.claude is read, so a connector result that merely imitates the
+    /// note cannot have the hook copy some other file into the docket.
+    /// </remarks>
+    internal static string? SavedResult(JsonNode? response, string claudeHome)
+    {
+        if (response is not JsonValue value || !value.TryGetValue<string>(out var text)
+            || SavedNote().Match(text) is not { Success: true } match)
+        {
+            return null;
+        }
+
+        string file;
+        try
+        {
+            file = Path.GetFullPath(match.Groups[1].Value);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        var home = Path.TrimEndingDirectorySeparator(Path.GetFullPath(claudeHome)) + Path.DirectorySeparatorChar;
+        if (!file.StartsWith(home, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetFileName(Path.GetDirectoryName(file)), "tool-results", StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(file))
+        {
+            return null;
+        }
+
+        return File.ReadAllText(file, Encoding.UTF8);
     }
 
     /// <summary>The receipt text: what was captured, and the ids and paging tokens in it.</summary>
@@ -209,6 +264,10 @@ internal static partial class Capture
     /// <summary>A page token or id: base64url and the punctuation ids use, no spaces, not too long.</summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9_\-.:=+/@]{1,200}$")]
     private static partial System.Text.RegularExpressions.Regex Token();
+
+    /// <summary>Claude Code's note for a result it would not pass on; the path ends at the first ".\n".</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^Error: result \([\d,]+ characters\) exceeds maximum allowed tokens\. Output has been saved to (.+?)\.\r?\n")]
+    private static partial System.Text.RegularExpressions.Regex SavedNote();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"cursor[^`]*`([^`]+)`")]
     private static partial System.Text.RegularExpressions.Regex SlackCursor();

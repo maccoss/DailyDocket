@@ -335,6 +335,10 @@ public sealed class JobRunner
     /// started the app passes host sign-in and session state), so the run uses the owner's own
     /// Claude Code sign-in and nothing else.
     /// </summary>
+    /// <summary>The largest connector result Claude Code passes on whole in a run, in tokens.</summary>
+    /// <remarks>Half a 200,000-token context, so one result can never fill a run on its own.</remarks>
+    internal const int MaxConnectorOutputTokens = 100_000;
+
     internal static IReadOnlyDictionary<string, string?> Environment()
     {
         var env = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -348,6 +352,13 @@ public sealed class JobRunner
         }
 
         env["MCP_TOOL_TIMEOUT"] = "120000";
+
+        // Claude Code refuses a connector result over 25,000 tokens by default and hands the hook a
+        // note instead, so a long email thread was never read (November 2026). In a pull the capture
+        // hook replaces each result with a short receipt, so the larger limit does not put the
+        // thread in front of the model; meeting prep, which reads results itself, now gets a long
+        // thread whole instead of the note. The hook also recovers a result over even this limit.
+        env["MAX_MCP_OUTPUT_TOKENS"] = MaxConnectorOutputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return env;
     }
 

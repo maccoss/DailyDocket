@@ -210,10 +210,36 @@ public sealed class CaptureIngestor
 
     private static void ApplyThread(SqliteConnection c, SqliteTransaction tx, CapturedCall call, DocketConfig config)
     {
-        var (threadId, messages) = GmailParser.ParseThread(call.ResponseText);
-        threadId ??= call.InputString("threadId");
-        if (threadId is null || messages.Count == 0)
+        // A read that returns no thread is counted, so a thread that cannot be read waits behind the
+        // others (Store.ThreadsToRead) instead of being asked for first on every pull. Such as
+        // Claude Code's note that the thread was too big to pass on, which is not JSON at all; that
+        // error is still kept with the capture.
+        void Failed(string? id) => c.Execute(
+            "UPDATE email_thread SET read_failures = COALESCE(read_failures, 0) + 1 WHERE thread_id = @id",
+            new { id },
+            tx);
+
+        string? threadId;
+        IReadOnlyList<MailMessage> messages;
+        try
         {
+            (threadId, messages) = GmailParser.ParseThread(call.ResponseText);
+        }
+        catch (JsonException)
+        {
+            Failed(call.InputString("threadId"));
+            throw;
+        }
+
+        threadId ??= call.InputString("threadId");
+        if (threadId is null)
+        {
+            return;
+        }
+
+        if (messages.Count == 0)
+        {
+            Failed(threadId);
             return;
         }
 
@@ -258,7 +284,7 @@ public sealed class CaptureIngestor
             """
             INSERT INTO email_thread (thread_id, newest_message_id, read_message_id, message_count, subject, sender, seen_utc, read_utc)
             VALUES (@threadId, @id, @id, @count, @subject, @sender, @seen, @seen)
-            ON CONFLICT (thread_id) DO UPDATE SET read_message_id = @id, message_count = @count, read_utc = @seen
+            ON CONFLICT (thread_id) DO UPDATE SET read_message_id = @id, message_count = @count, read_utc = @seen, read_failures = NULL
             """,
             new { threadId, id = newest.Id, count = messages.Count, subject = newest.Subject, sender = newest.Sender, seen = DocketDatabase.Iso(call.CapturedAt) },
             tx);

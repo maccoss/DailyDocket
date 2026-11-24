@@ -70,7 +70,27 @@ public static partial class SlackParser
         }
 
         var cursor = Grab(pagination, Cursor());
-        return (messages, cursor.Length == 0 ? null : cursor);
+        return (Named(messages, report), cursor.Length == 0 ? null : cursor);
+    }
+
+    /// <summary>
+    /// A sender Slack gave no name gets the name the same report uses for that id elsewhere: on
+    /// another From line, or in a mention (&lt;@U…|Name&gt;). His own messages often come unnamed.
+    /// </summary>
+    private static List<SlackMessage> Named(List<SlackMessage> messages, string report)
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var m in messages.Where(m => m.FromName != m.FromId && !m.FromName.StartsWith("app ", StringComparison.Ordinal)))
+        {
+            names.TryAdd(m.FromId, m.FromName);
+        }
+
+        foreach (Match mention in Mention().Matches(report))
+        {
+            names.TryAdd(mention.Groups[1].Value, mention.Groups[2].Value.Trim());
+        }
+
+        return [.. messages.Select(m => m.FromName == m.FromId && names.TryGetValue(m.FromId, out var name) ? m with { FromName = name } : m)];
     }
 
     /// <summary>
@@ -165,8 +185,14 @@ public static partial class SlackParser
     }
 
     /// <summary>Apps and some accounts carry no display name: fall back to the address, then the id.</summary>
+    /// <remarks>
+    /// Read from the first From line only. Slack sometimes gives his own messages no name or address
+    /// ("From:  (ID: U…)"), and searching the whole block then found the address on a later context
+    /// line, so his messages were shown under a colleague's name (November 2026).
+    /// </remarks>
     private static string SenderName(string block, string fromId)
     {
+        block = Grab(block, FromLine());
         var name = Grab(block, FromName()).Trim();
         if (name.Length > 0)
         {
@@ -198,6 +224,12 @@ public static partial class SlackParser
 
     [GeneratedRegex(@"From:[^\n]*\(ID:\s*([A-Z0-9]+)\)")]
     private static partial Regex FromId();
+
+    [GeneratedRegex(@"<@(U[A-Z0-9]+)\|([^>\n]+)>")]
+    private static partial Regex Mention();
+
+    [GeneratedRegex(@"(From:[^\n]*)")]
+    private static partial Regex FromLine();
 
     [GeneratedRegex(@"From:[ \t]*([^<(\n]+)")]
     private static partial Regex FromName();

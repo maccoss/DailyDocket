@@ -141,6 +141,12 @@ public sealed class JobPlanTests
     }
 
     [Fact]
+    public void A_run_passes_on_connector_results_far_larger_than_the_default()
+    {
+        int.Parse(JobRunner.Environment()["MAX_MCP_OUTPUT_TOKENS"]!, System.Globalization.CultureInfo.InvariantCulture).ShouldBeGreaterThan(25_000);
+    }
+
+    [Fact]
     public void A_run_inherits_no_claude_session_variables()
     {
         Environment.SetEnvironmentVariable("CLAUDE_CODE_TEST_VAR", "x");
