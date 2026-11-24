@@ -66,6 +66,29 @@ public sealed class SlackTests
     }
 
     [Fact]
+    public void His_unnamed_message_is_not_named_after_someone_in_its_context()
+    {
+        const string Report = """
+            ### Result 1 of 1
+            Channel: #lab-instruments (ID: C0000000003)
+            From:  (ID: U0000000001)
+            Time: 2026-11-23 17:18:15 PST
+            Message_ts: 1795880000.000050
+            Text:
+            Ask <@U0000000001|Pat Owner> about it.
+            Context after:
+            - From: Lee Lab <lee@example.org> (ID: U0000000005)
+              Message_ts: 1795881700.000300
+              Thanks.
+            """;
+
+        var messages = SlackParser.ParseSearch(Report).Messages;
+
+        messages.Single(m => m.Ts == "1795880000.000050").FromName.ShouldBe("Pat Owner");
+        messages.Single(m => m.Ts == "1795881700.000300").FromName.ShouldBe("Lee Lab");
+    }
+
+    [Fact]
     public void An_app_with_no_name_is_named_by_its_id()
     {
         SlackParser.ParseSearch(Envelope()).Messages.Single(m => m.FromId == "B0000000007").FromName.ShouldBe("app B0000000007");

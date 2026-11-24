@@ -124,9 +124,10 @@ public static class CalendarParser
     private static readonly Regex Url = new(@"https://[^\s""'<>()\[\]{}|\\^`]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// The meeting's join link: Google's own conference link first (often empty: invitations from
-    /// Outlook and Zoom put the link in the text), then the first Zoom, Teams, Meet or Webex link in
-    /// the location, then in the description. Only the link is kept, never the description.
+    /// The meeting's join link: the conference's own video link first (often empty: invitations
+    /// from Outlook and Zoom put the link in the text), then the first Zoom, Teams, Meet or Webex
+    /// link in the conference notes, the location, then the description. Only the link is kept,
+    /// never the description.
     /// </summary>
     public static string? JoinLink(JsonElement ev)
     {
@@ -142,10 +143,20 @@ public static class CalendarParser
             }
         }
 
-        foreach (var field in new[] { "hangoutLink", "location", "description" })
+        // The connector reshapes conferenceData: one videoEntryPoint object rather than Google's
+        // entryPoints list. A meeting made with the Zoom add-on has its link only there and in
+        // joiningNotesText, so its Zoom link was missing (November 2026).
+        if (conference.ValueKind == JsonValueKind.Object
+            && conference.TryGetProperty("videoEntryPoint", out var entry) && entry.ValueKind == JsonValueKind.Object
+            && MeetingLink(GmailParser.Str(entry, "uri")) is { } entryLink)
         {
-            var text = GmailParser.Str(ev, field) ?? "";
-            foreach (Match m in Url.Matches(text))
+            return entryLink;
+        }
+
+        var notes = conference.ValueKind == JsonValueKind.Object ? GmailParser.Str(conference, "joiningNotesText") : null;
+        foreach (var text in new[] { notes, GmailParser.Str(ev, "hangoutLink"), GmailParser.Str(ev, "location"), GmailParser.Str(ev, "description") })
+        {
+            foreach (Match m in Url.Matches(text ?? ""))
             {
                 if (MeetingLink(m.Value) is { } link)
                 {

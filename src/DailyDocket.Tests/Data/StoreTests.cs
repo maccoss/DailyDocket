@@ -65,6 +65,24 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void A_thread_that_cannot_be_read_waits_behind_the_others()
+    {
+        Ingest(Search, new { query = "in:inbox newer_than:30d", view = "THREAD_VIEW_SUMMARY" }, Fixture.Read("gmail-search-summary.json"));
+        const string TooBig = "Error: result (62,591 characters) exceeds maximum allowed tokens. Output has been saved to C:\\x\\tool-results\\a.txt.\nFormat: JSON";
+
+        Ingest(GetThread, new { threadId = "thread-a" }, TooBig);
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBe(["thread-b", "thread-a"]);
+
+        Ingest(GetThread, new { threadId = "thread-b" }, TooBig);
+        Ingest(GetThread, new { threadId = "thread-b" }, TooBig);
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBe(["thread-a", "thread-b"]);
+
+        // A good read clears the count, and the thread is read.
+        Ingest(GetThread, new { threadId = "thread-a" }, Fixture.Read("gmail-thread.json"));
+        _store.ThreadsToRead(Now.AddDays(-30), Now, 10).ShouldBe(["thread-b"]);
+    }
+
+    [Fact]
     public void A_searched_thread_is_read_once_until_a_newer_message_arrives()
     {
         Ingest(Search, new { query = "in:inbox newer_than:30d", view = "THREAD_VIEW_SUMMARY" }, Fixture.Read("gmail-search-summary.json"));

@@ -11,7 +11,13 @@ namespace DailyDocket.Data;
 /// </remarks>
 internal static class Migrations
 {
-    public const int Current = 5;
+    public const int Current = 6;
+
+    /// <summary>
+    /// Version 6: how many reads of a thread in a row failed, so one that cannot be read waits
+    /// behind the others instead of taking every pull's reads (Store.ThreadsToRead).
+    /// </summary>
+    private const string ReadFailuresStep = "ALTER TABLE email_thread ADD COLUMN read_failures INTEGER;";
 
     /// <summary>
     /// Version 5: when a thread was last read, so threads he may owe are read again on a timer
@@ -88,7 +94,7 @@ internal static class Migrations
 
         -- One row per thread seen in an inbox search. newest_message_id is the message the search
         -- named (not always the newest); read_message_id is the newest message the last get_thread
-        -- saw, at read_utc.
+        -- saw, at read_utc; read_failures counts the reads in a row that returned no thread.
         CREATE TABLE email_thread (
             thread_id         TEXT PRIMARY KEY,
             newest_message_id TEXT NOT NULL,
@@ -104,7 +110,8 @@ internal static class Migrations
             waiting_on        TEXT,
             snippet           TEXT,
             unread            INTEGER,
-            read_utc          TEXT
+            read_utc          TEXT,
+            read_failures     INTEGER
         );
 
         CREATE TABLE email_message (
@@ -203,7 +210,7 @@ internal static class Migrations
         }
 
         using var tx = c.BeginTransaction();
-        if (version is 1 or 2 or 3 or 4)
+        if (version is 1 or 2 or 3 or 4 or 5)
         {
             // The cache stays; each step adds what its version brought.
             if (version == 1)
@@ -222,9 +229,15 @@ internal static class Migrations
                 c.Execute(JoinLinkStep, transaction: tx);
             }
 
-            if (!c.Query<string>("SELECT name FROM pragma_table_info('email_thread');", transaction: tx).Contains("read_utc"))
+            var threadColumns = c.Query<string>("SELECT name FROM pragma_table_info('email_thread');", transaction: tx).ToList();
+            if (!threadColumns.Contains("read_utc"))
             {
                 c.Execute(ReadTimeStep, transaction: tx);
+            }
+
+            if (!threadColumns.Contains("read_failures"))
+            {
+                c.Execute(ReadFailuresStep, transaction: tx);
             }
 
             c.Execute($"PRAGMA user_version = {Current};", transaction: tx);

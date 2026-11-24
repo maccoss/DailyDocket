@@ -89,7 +89,9 @@ public sealed class Store
     /// answer to his reply ("Thanks") went unmatched for hours (November 2026). So a thread he may
     /// owe, or one with a message in the last two days, is read again every few pulls. The search's
     /// message counts only when no read has stored it; comparing it with the newest message read,
-    /// as before, read every thread he had answered three times a pull, forever.
+    /// as before, read every thread he had answered three times a pull, forever. A thread whose
+    /// reads keep failing goes behind the rest of its group: 39 threads too big to read once took
+    /// every read of every pull while about 600 waited.
     /// </remarks>
     public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max)
     {
@@ -110,6 +112,7 @@ public sealed class Store
                         AND (t.read_utc IS NULL OR t.read_utc < @recentBefore)))
                 ORDER BY CASE WHEN t.read_message_id IS NULL
                     OR NOT EXISTS (SELECT 1 FROM email_message m WHERE m.message_id = t.newest_message_id) THEN 0 ELSE 1 END,
+                    COALESCE(t.read_failures, 0),
                     t.seen_utc DESC
                 LIMIT @max
                 """,

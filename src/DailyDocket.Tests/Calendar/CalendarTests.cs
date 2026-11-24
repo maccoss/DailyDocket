@@ -42,6 +42,21 @@ public sealed class CalendarTests
     }
 
     [Fact]
+    public void A_zoom_add_on_meeting_takes_its_link_from_the_connectors_video_entry_point_or_notes()
+    {
+        // The connector's shape for a meeting made with the Zoom add-on: no entryPoints, no location.
+        Join("""
+            {"conferenceData":{"solutionName":"Zoom Meeting",
+             "videoEntryPoint":{"codes":[{"codeType":"MEETING_CODE","value":"123456789"}],"uri":"https://example.zoom.us/j/123456789?pwd=abc&jst=2"},
+             "sipEntryPoint":{"uri":"sip:123456789@zoomcrc.com"},
+             "moreDetailsEntryPoint":{"uri":"https://www.google.com/url?q=https://integration-gws.zoom.us/x"},
+             "joiningNotesText":"Join Zoom Meeting: \nhttps://example.zoom.us/j/123456789?pwd=abc&jst=2 <https://www.google.com/url?q=x>"}}
+            """).ShouldBe("https://example.zoom.us/j/123456789?pwd=abc&jst=2");
+        Join("""{"conferenceData":{"joiningNotesText":"Join Zoom Meeting: \nhttps://example.zoom.us/j/987654321 <https://www.google.com/url?q=x>"}}""")
+            .ShouldBe("https://example.zoom.us/j/987654321");
+    }
+
+    [Fact]
     public void Only_https_video_meeting_hosts_become_a_join_link()
     {
         // The invitation's text is written by whoever sent it: another site must not get a Join button.

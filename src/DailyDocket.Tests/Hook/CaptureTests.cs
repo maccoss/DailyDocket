@@ -25,6 +25,47 @@ public sealed class CaptureTests : IDisposable
         File.ReadAllText(file).ShouldBe(Input);
     }
 
+    private static string TooBig(string savedPath) => new JsonObject
+    {
+        ["session_id"] = "s1",
+        ["tool_name"] = "mcp__claude_ai_Gmail__get_thread",
+        ["tool_use_id"] = "toolu_big",
+        ["tool_input"] = new JsonObject { ["threadId"] = "19a2c0f3e8b1" },
+        ["tool_response"] = $"Error: result (62,591 characters) exceeds maximum allowed tokens. Output has been saved to {savedPath}.\nFormat: JSON with schema: {{id: string}}\nUse offset and limit parameters to read specific portions of the file.\n",
+    }.ToJsonString();
+
+    [Fact]
+    public void A_result_too_big_for_claude_code_is_saved_from_the_file_it_was_put_in()
+    {
+        var home = Path.Combine(_dir, ".claude");
+        var saved = Path.Combine(home, "projects", "run", "session", "tool-results", "mcp-claude_ai_Gmail-get_thread-1.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
+        const string Thread = """{"id":"19a2c0f3e8b1","messages":[{"id":"m1","snippet":"Long thread"}]}""";
+        File.WriteAllText(saved, Thread);
+        var captures = Path.Combine(_dir, "captures");
+
+        var output = Capture.Run(TooBig(saved), captures, receipt: true, DateTimeOffset.UtcNow, home).ShouldNotBeNull();
+
+        var file = Directory.GetFiles(captures).ShouldHaveSingleItem();
+        JsonNode.Parse(File.ReadAllText(file))!["tool_response"]!.GetValue<string>().ShouldBe(Thread);
+        var receiptText = JsonNode.Parse(output)!["hookSpecificOutput"]!["updatedToolOutput"]!.GetValue<string>();
+        receiptText.ShouldContain("19a2c0f3e8b1");
+        receiptText.ShouldNotContain("must read", Case.Insensitive);
+    }
+
+    [Fact]
+    public void A_note_naming_a_file_outside_claude_codes_results_is_saved_as_it_is()
+    {
+        var elsewhere = Path.Combine(_dir, "tool-results", "secret.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.WriteAllText(elsewhere, "not a connector result");
+        var input = TooBig(elsewhere);
+
+        Capture.Run(input, Path.Combine(_dir, "captures"), receipt: false, DateTimeOffset.UtcNow, Path.Combine(_dir, ".claude"));
+
+        File.ReadAllText(Directory.GetFiles(Path.Combine(_dir, "captures")).ShouldHaveSingleItem()).ShouldBe(input);
+    }
+
     [Fact]
     public void A_receipt_keeps_ids_and_the_page_token_and_drops_the_text()
     {
