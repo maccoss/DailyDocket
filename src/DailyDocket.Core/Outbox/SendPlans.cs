@@ -26,7 +26,11 @@ public static class SendPlans
         OutboxKind.EmailReply => (ConnectorTools.GetThread, new JsonObject { ["threadId"] = item.Target, ["messageFormat"] = "METADATA_ONLY" }),
         OutboxKind.SlackReply when item.ReplyTo is { } thread =>
             (ConnectorTools.SlackReadThread, new JsonObject { ["channel_id"] = item.Channel, ["message_ts"] = thread, ["oldest"] = item.Base, ["limit"] = 50 }),
-        _ => (ConnectorTools.Slack + "slack_read_channel", new JsonObject { ["channel_id"] = item.Channel, ["oldest"] = item.Base, ["limit"] = 20 }),
+        // The channel's newest messages, without "oldest": a read from the base returned nothing when
+        // nobody had written since, and so never showed who is in the conversation (members of another
+        // organization are marked "external"; OutboxRules.SlackSharedOutside). Newest first, so any
+        // message after the base is still among them.
+        _ => (ConnectorTools.Slack + "slack_read_channel", new JsonObject { ["channel_id"] = item.Channel, ["limit"] = 20 }),
     };
 
     public static JobPlan PreCheck(OutboxItem item, string model)
