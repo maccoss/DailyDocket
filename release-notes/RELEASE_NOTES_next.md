@@ -8,12 +8,6 @@ impact first, empty headings deleted at release.
 
 ## Bug Fixes
 
-- A copy of DailyDocket older than its database no longer stops for good. It looks for the update
-  it needs, shows the download, and installs it; offline, it says where to download the latest
-  version. Before, it showed an error and could never update itself.
-- When DailyDocket could not start for another reason, it no longer kept running without a window,
-  which made later starts do nothing.
-
 ## Performance
 
 ## Breaking Changes
