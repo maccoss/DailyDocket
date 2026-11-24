@@ -430,4 +430,30 @@ public sealed class OutboxTests : IDisposable
         again.ThreadsToRead(now.AddDays(-30), now, 10).ShouldBe(["t1"]);
         new OutboxStore(again.Database, null).Get("o1").ShouldNotBeNull();
     }
+
+    [Fact]
+    public void A_database_from_a_newer_version_is_left_alone_and_named_as_such()
+    {
+        // Its own exception type, so startup looks for the update rather than giving up.
+        var path = Path.Combine(_dir, "future.db");
+        var db = DocketDatabase.Open(path, "k");
+        new OutboxStore(db, null).Save(Email());
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version = 99;";
+            cmd.ExecuteNonQuery();
+        }
+
+        SqliteConnection.ClearAllPools();
+        var tooNew = Should.Throw<DatabaseTooNewException>(() => DocketDatabase.Open(path, "k"));
+        tooNew.Found.ShouldBe(99);
+
+        using (var c = db.Connect())
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT count(*) FROM outbox_item;";
+            ((long)cmd.ExecuteScalar()!).ShouldBe(1);
+        }
+    }
 }

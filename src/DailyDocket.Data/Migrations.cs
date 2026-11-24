@@ -205,8 +205,7 @@ internal static class Migrations
         if (version > Current)
         {
             // A newer DailyDocket wrote this file. Dropping it would lose that version's outbox.
-            throw new InvalidOperationException(
-                "This computer's DailyDocket database was written by a newer version of DailyDocket. Update DailyDocket, then start it again.");
+            throw new DatabaseTooNewException(version, Current);
         }
 
         using var tx = c.BeginTransaction();
