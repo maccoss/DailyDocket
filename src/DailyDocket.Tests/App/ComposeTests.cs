@@ -53,6 +53,14 @@ public sealed class ComposeTests : IDisposable
     }
 
     [Fact]
+    public void Send_with_no_reply_behind_the_box_says_so_rather_than_doing_nothing()
+    {
+        _vm.Send(Text("Lost text")).ShouldBeFalse();
+
+        _vm.Note.ShouldNotBeNull().ShouldContain("not sent");
+    }
+
+    [Fact]
     public void Send_refuses_while_a_typed_address_is_not_understood()
     {
         OpenThread("thread-a");

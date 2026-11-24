@@ -153,6 +153,19 @@ public static partial class OutboxRules
             .Any(v => v > b);
     }
 
+    /// <summary>Why a reply to a Slack Connect conversation cannot go, shown on the item.</summary>
+    public const string SlackConnectProblem =
+        "Not sent: this Slack conversation is shared with another organization (Slack Connect), and Slack's connector cannot post there. Reply in Slack itself, then mark the conversation Handled.";
+
+    /// <summary>
+    /// Whether a fresh Slack read shows a member of another organization: the connector marks them
+    /// "(external: org)" or "(U123, external: org)". Such a conversation is shared through Slack
+    /// Connect, which the connector refuses to post to (its own description says so), so the reply
+    /// is failed before the send run rather than held as "could not confirm" after it (November
+    /// 2026, a reply in a channel shared with another lab).
+    /// </summary>
+    public static bool SlackSharedOutside(string freshResponse) => ExternalMember().IsMatch(freshResponse);
+
     /// <summary>
     /// What to make of a send run that left no record of the call's result. Only a refusal by the
     /// guard, with the guard never having let a call through, proves nothing went out; anything else
@@ -168,6 +181,13 @@ public static partial class OutboxRules
     public static (OutboxStatus Status, string Problem) AfterUnconfirmedSend(string? runProblem, string? finalText, bool callLetThrough)
     {
         var text = (finalText ?? "").Trim();
+
+        // The connector's refusal of a Slack Connect conversation: nothing was posted.
+        if (!text.StartsWith("SENT", StringComparison.Ordinal) && SlackConnectRefusal().IsMatch(text))
+        {
+            return (OutboxStatus.Failed, SlackConnectProblem);
+        }
+
         if (!callLetThrough && text.Contains("DailyDocket send guard", StringComparison.Ordinal))
         {
             var refused = text.Length > 400 ? text[..400] : text;
@@ -220,6 +240,12 @@ public static partial class OutboxRules
 
     [GeneratedRegex(@"\b\d{10}\.\d{6}\b")]
     private static partial Regex SlackTs();
+
+    [GeneratedRegex(@"[(,]\s*external:\s*[^)\s][^)]*\)")]
+    private static partial Regex ExternalMember();
+
+    [GeneratedRegex(@"externally[ -]shared|slack connect", RegexOptions.IgnoreCase)]
+    private static partial Regex SlackConnectRefusal();
 
     [GeneratedRegex(@"https://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Z0-9]+/p\d+\S*")]
     private static partial Regex SlackLink();

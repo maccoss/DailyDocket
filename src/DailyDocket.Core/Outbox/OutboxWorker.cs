@@ -143,6 +143,13 @@ public sealed class OutboxWorker
             return false;
         }
 
+        if (item.Kind == OutboxKind.SlackReply && OutboxRules.SlackSharedOutside(fresh))
+        {
+            Update(item with { Status = OutboxStatus.Failed, Problem = OutboxRules.SlackConnectProblem });
+            _log.LogInformation("Outbox item {Id} not sent: the Slack conversation is shared with another organization", item.Id);
+            return false;
+        }
+
         var movedOn = item.Kind == OutboxKind.EmailReply
             ? OutboxRules.EmailMovedOn(GmailParser.ParseThread(fresh).Messages, item.Base)
             : OutboxRules.SlackMovedOn(fresh, item.Base);

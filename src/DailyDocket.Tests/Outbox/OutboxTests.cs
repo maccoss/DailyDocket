@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using DailyDocket.Core.Jobs;
 using DailyDocket.Core.Mail;
 using DailyDocket.Core.Outbox;
 using DailyDocket.Data;
@@ -225,6 +226,32 @@ public sealed class OutboxTests : IDisposable
 
         OutboxRules.SlackMovedOn(read, "1795881600.000200").ShouldBeFalse();
         OutboxRules.SlackMovedOn(read + "Message TS: 1795881700.000300\n", "1795881600.000200").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_slack_conversation_with_a_member_of_another_organization_cannot_be_posted_to()
+    {
+        // The two forms the connector's reads use, detailed and concise (synthetic names).
+        OutboxRules.SlackSharedOutside("=== Message from Pat Lee <pat@example.org> (U09ABC, external: otherlab) at 2026-11-23 17:45:03 PST ===").ShouldBeTrue();
+        OutboxRules.SlackSharedOutside("Pat Lee <pat@example.org> (external: otherlab): Hi").ShouldBeTrue();
+        OutboxRules.SlackSharedOutside("=== Message from Sam Roe <sam@example.org> (U02XYZ) at 2026-11-23 17:45:03 PST ===\nan external review").ShouldBeFalse();
+
+        // The connector's refusal after the fact: nothing was posted, so failed, not "could not confirm".
+        var (status, problem) = OutboxRules.AfterUnconfirmedSend(null, "Cannot post to externally shared (Slack Connect) channels.", callLetThrough: true);
+        status.ShouldBe(OutboxStatus.Failed);
+        problem.ShouldBe(OutboxRules.SlackConnectProblem);
+        OutboxRules.AfterUnconfirmedSend(null, "SENT. The message mentions Slack Connect.", callLetThrough: true).Status.ShouldBe(OutboxStatus.Held);
+    }
+
+    [Fact]
+    public void The_check_before_a_channel_reply_reads_the_newest_messages_so_it_sees_who_is_there()
+    {
+        var item = OutboxRules.Action(OutboxKind.SlackReply, "C1", "C1", "Hi", "#general", Now, "skiddaw") with { Base = "1795881600.000200" };
+
+        var (tool, input) = SendPlans.PreCheckCall(item);
+
+        tool.ShouldBe(ConnectorTools.Slack + "slack_read_channel");
+        input.ContainsKey("oldest").ShouldBeFalse();
     }
 
     [Theory]

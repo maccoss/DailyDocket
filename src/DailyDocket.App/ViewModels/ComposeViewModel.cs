@@ -136,6 +136,7 @@ public sealed partial class ComposeViewModel : ObservableObject
         Heading = draft is null ? heading : "Your draft";
         Note = draft is null ? null : "Reopened your unsent draft.";
         IsOpen = true;
+        Serilog.Log.Information("Opened the {Kind} box for {Target} ({Which})", Kind, target, draft is null ? "new reply" : "draft " + draft.Id);
         LoadRequested?.Invoke(draft?.Document);
     }
 
@@ -199,8 +200,13 @@ public sealed partial class ComposeViewModel : ObservableObject
     /// <summary>Queues the reply behind the undo window. Nothing leaves before it passes.</summary>
     public bool Send(ComposedText content)
     {
+        // This returned false without a word, and a Slack reply on skiddaw vanished without a row
+        // in the outbox or a line in the log (November 2026; how the box got here is not known).
+        // The text is still in the box, so say so rather than lose it quietly.
         if (_item is null)
         {
+            Serilog.Log.Warning("Send pressed on a {Kind} box that has no reply behind it (open: {Open}); nothing was queued", Kind, IsOpen);
+            Note = "This reply was not sent: DailyDocket lost track of which conversation it belongs to. Copy your text, close this box, then press Reply again and paste it.";
             return false;
         }
 
@@ -230,6 +236,7 @@ public sealed partial class ComposeViewModel : ObservableObject
         var seconds = Math.Max(0, _settings.UndoWindowSeconds);
         var queued = Fill(_item, content) with { Status = OutboxStatus.Queued, SendAfter = DateTimeOffset.UtcNow.AddSeconds(seconds), Problem = null };
         _outbox.Save(queued);
+        Serilog.Log.Information("Queued outbox item {Id} ({Kind}) for {Target}, sending in {Seconds} s", queued.Id, queued.Kind, queued.Target, seconds);
         _item = null;
         IsOpen = false;
         Note = null;
@@ -277,6 +284,7 @@ public sealed partial class ComposeViewModel : ObservableObject
         if (_item is not null && _outbox.Get(_item.Id) is not null)
         {
             _outbox.Delete(_item.Id);
+            Serilog.Log.Information("Discarded outbox item {Id} ({Kind}) for {Target}", _item.Id, _item.Kind, _item.Target);
         }
 
         _item = null;
@@ -289,6 +297,11 @@ public sealed partial class ComposeViewModel : ObservableObject
     private void Close()
     {
         SaveCurrent();
+        if (_item is not null)
+        {
+            Serilog.Log.Information("Closed the {Kind} box for {Target}; draft kept: {Kept}", Kind, _item.Target, _outbox.Get(_item.Id) is not null);
+        }
+
         _item = null;
         IsOpen = false;
     }
