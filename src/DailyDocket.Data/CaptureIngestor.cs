@@ -149,9 +149,20 @@ public sealed class CaptureIngestor
 
     private static void ApplySearch(SqliteConnection c, SqliteTransaction tx, CapturedCall call, DocketConfig config)
     {
-        // Only inbox sweeps define what is on the Email tab. Other searches (sent mail, a drafting
-        // run's lookups) say nothing about what is waiting.
-        if (call.InputString("query") is not { } query || !query.Contains("in:inbox", StringComparison.OrdinalIgnoreCase))
+        // Only inbox sweeps define what is on the Email tab. Other searches (a drafting run's
+        // lookups) say nothing about what is waiting, except the pull's own Sent searches below.
+        if (call.InputString("query") is not { } query)
+        {
+            return;
+        }
+
+        if (query.StartsWith("in:sent ", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplySentSearch(c, tx, call);
+            return;
+        }
+
+        if (!query.Contains("in:inbox", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -171,6 +182,28 @@ public sealed class CaptureIngestor
                     seen_utc = excluded.seen_utc
                 """,
                 new { t.ThreadId, t.NewestMessageId, t.MessageCount, t.Subject, t.Sender, seen = DocketDatabase.Iso(call.CapturedAt) },
+                tx);
+        }
+    }
+
+    /// <summary>
+    /// A message he sent that no read has stored: its thread, if the inbox sweep knows it, is read
+    /// again on this pull. Clearing read_message_id rather than setting newest_message_id, because
+    /// an inbox search ingested after this one in the same run would overwrite the latter. A Sent
+    /// result never adds a thread: what he wrote is not something waiting for him.
+    /// </summary>
+    private static void ApplySentSearch(SqliteConnection c, SqliteTransaction tx, CapturedCall call)
+    {
+        var (threads, _) = GmailParser.ParseSearch(call.ResponseText);
+        foreach (var t in threads)
+        {
+            c.Execute(
+                """
+                UPDATE email_thread SET read_message_id = NULL
+                WHERE thread_id = @ThreadId
+                    AND NOT EXISTS (SELECT 1 FROM email_message WHERE message_id = @NewestMessageId)
+                """,
+                new { t.ThreadId, t.NewestMessageId },
                 tx);
         }
     }
@@ -223,9 +256,9 @@ public sealed class CaptureIngestor
         var newest = messages[^1];
         c.Execute(
             """
-            INSERT INTO email_thread (thread_id, newest_message_id, read_message_id, message_count, subject, sender, seen_utc)
-            VALUES (@threadId, @id, @id, @count, @subject, @sender, @seen)
-            ON CONFLICT (thread_id) DO UPDATE SET read_message_id = @id, message_count = @count
+            INSERT INTO email_thread (thread_id, newest_message_id, read_message_id, message_count, subject, sender, seen_utc, read_utc)
+            VALUES (@threadId, @id, @id, @count, @subject, @sender, @seen, @seen)
+            ON CONFLICT (thread_id) DO UPDATE SET read_message_id = @id, message_count = @count, read_utc = @seen
             """,
             new { threadId, id = newest.Id, count = messages.Count, subject = newest.Subject, sender = newest.Sender, seen = DocketDatabase.Iso(call.CapturedAt) },
             tx);

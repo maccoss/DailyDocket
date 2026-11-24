@@ -12,7 +12,7 @@ public interface IJobStore
     int IngestFolder(string runId, string folder);
 
     /// <summary>Threads seen since <paramref name="seenSince"/> that need reading.</summary>
-    IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max);
+    IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max);
 
     IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max);
 

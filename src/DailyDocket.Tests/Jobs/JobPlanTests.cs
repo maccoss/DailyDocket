@@ -55,11 +55,14 @@ public sealed class JobPlanTests
         var plan = JobPlans.MailPull(Fixture.Config(), Now, Fixture.Pacific, null, "haiku");
 
         // Gmail returns at most 50 threads a search and no next page, so the window is searched a
-        // day at a time: today (Nov 22 in Pacific time) back to 30 days before, 31 searches.
+        // day at a time: today (Nov 22 in Pacific time) back to 30 days before, 31 searches, plus his
+        // Sent mail for today and the two days before.
         plan.Prompt.ShouldContain("after:2026/11/22 before:2026/11/23");
         plan.Prompt.ShouldContain("after:2026/10/23 before:2026/10/24");
         plan.Prompt.ShouldNotContain("after:2026/10/22 ");
-        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(31);
+        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(34);
+        plan.Prompt.ShouldContain("\"query\":\"in:sent after:2026/11/20 before:2026/11/21\"");
+        plan.Prompt.ShouldNotContain("in:sent after:2026/11/19 ");
         plan.Prompt.ShouldNotContain("newer_than");
         plan.Prompt.ShouldContain("THREAD_VIEW_SUMMARY");
         plan.Prompt.ShouldContain($"at most {JobPlans.ReadRounds} times");
@@ -73,7 +76,7 @@ public sealed class JobPlanTests
         var plan = JobPlans.MailPull(Fixture.Config(), Now, Fixture.Pacific, Now.AddHours(-1).ToString("O"), "haiku");
 
         plan.Prompt.ShouldContain("after:2026/11/20 before:2026/11/21");
-        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(3);
+        System.Text.RegularExpressions.Regex.Matches(plan.Prompt, "after:").Count.ShouldBe(6);
         plan.Watermarks.ShouldBeEmpty();
     }
 
@@ -235,7 +238,7 @@ public sealed class JobPlanTests
 
         public int IngestFolder(string runId, string folder) => 0;
 
-        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max) => [];
+        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max) => [];
 
         public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max) =>
             [.. Pending.Take(max).Select(k => new TriageItem("mail", k, "m-" + k, "transcript"))];
@@ -271,7 +274,7 @@ public sealed class JobPlanTests
 
         public int IngestFolder(string runId, string folder) => 0;
 
-        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, int max) => [];
+        public IReadOnlyList<string> ThreadsToRead(DateTimeOffset seenSince, DateTimeOffset now, int max) => [];
 
         public IReadOnlyList<TriageItem> TriageBatch(DateTimeOffset now, int max) => [];
 
