@@ -1,7 +1,8 @@
 # DailyDocket v26.3.4
 
-DailyDocket can no longer get stuck on a version older than its database, and notifications
-in the corner of the screen are now only for replies that did not send, unless you choose otherwise.
+To-dos are reordered by dragging, notifications in the corner of the screen are now only for
+replies that did not send unless you choose otherwise, and DailyDocket can no longer get stuck on
+a version older than its database.
 
 ## New Features
 
@@ -11,6 +12,11 @@ in the corner of the screen are now only for replies that did not send, unless y
   Notifications: only replies that did not send, everything new that needs a reply (as before),
   or none. If you had turned notifications off, they stay off
   (`src/DailyDocket.Core/Infrastructure/SettingsStore.cs`, `src/DailyDocket.App/Services/TrayIcon.cs`).
+
+- **To-dos are reordered by dragging.** Each card has a grip in place of the up and down arrows,
+  a line shows where the dragged card will land, the gaps between cards take a drop too, and the
+  list scrolls when you drag near its top or bottom. Alt+Up and Alt+Down still move a task
+  (`src/DailyDocket.App/Views/TodoTab.xaml.cs`).
 
 ## Bug Fixes
 
@@ -23,3 +29,8 @@ in the corner of the screen are now only for replies that did not send, unless y
 
 - **A failed start left DailyDocket running with no window**, so starting it again did nothing.
   It now says it could not start and exits (`src/DailyDocket.App/App.xaml.cs`).
+
+## Performance
+
+- **The To do list settles at once after a drop or a check mark.** Cards that did not change are
+  kept instead of every card being drawn again (`src/DailyDocket.App/ViewModels/TodoViewModel.cs`).

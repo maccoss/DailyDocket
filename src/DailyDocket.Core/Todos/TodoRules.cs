@@ -42,6 +42,38 @@ public static class TodoRules
         _ => 1,
     };
 
+    /// <summary>
+    /// Where a dragged task would land: the slot before the first card whose middle is below the
+    /// pointer (0 is the top, <c>middles.Count</c> the bottom). Measured from the middles rather than
+    /// the card under the pointer, so the gap between two cards is a place to drop too.
+    /// </summary>
+    public static int DropSlot(IReadOnlyList<double> middles, double y)
+    {
+        var slot = 0;
+        while (slot < middles.Count && middles[slot] < y)
+        {
+            slot++;
+        }
+
+        return slot;
+    }
+
+    /// <summary>
+    /// The task the dragged one goes just before when dropped at <paramref name="slot"/> of
+    /// <paramref name="order"/> (null for the bottom), or false when it would stay where it is.
+    /// </summary>
+    public static bool TryDropBefore(IReadOnlyList<string> order, string dragged, int slot, out string? beforeId)
+    {
+        var from = -1;
+        for (var i = 0; i < order.Count && from < 0; i++)
+        {
+            from = order[i] == dragged ? i : -1;
+        }
+
+        beforeId = slot < order.Count ? order[slot] : null;
+        return from < 0 || (slot != from && slot != from + 1);
+    }
+
     /// <summary>The artifact's due labels: "3d late", "today", "tomorrow", a weekday, or a date.</summary>
     public static (string Text, bool Late) DueLabel(DateOnly? due, DateOnly today)
     {

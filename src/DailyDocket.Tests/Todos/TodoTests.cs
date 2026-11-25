@@ -24,6 +24,29 @@ public sealed class TodoTests : IDisposable
             done ? Now : null, Now.AddDays(-2), new TodoSource("email", "19a2c0f3e8b1", "PRM targets"), Now, "skiddaw");
 
     [Fact]
+    public void A_drop_lands_by_the_cards_middles_and_a_drop_in_place_changes_nothing()
+    {
+        // Cards 40 high with their middles at 20, 66 and 112; the gap after the first is at 43.
+        double[] middles = [20, 66, 112];
+        TodoRules.DropSlot(middles, 5).ShouldBe(0);
+        TodoRules.DropSlot(middles, 43).ShouldBe(1);
+        TodoRules.DropSlot(middles, 80).ShouldBe(2);
+        TodoRules.DropSlot(middles, 400).ShouldBe(3);
+
+        string[] order = ["a", "b", "c"];
+        TodoRules.TryDropBefore(order, "a", 2, out var before).ShouldBeTrue();
+        before.ShouldBe("c");
+        TodoRules.TryDropBefore(order, "a", 3, out before).ShouldBeTrue();
+        before.ShouldBeNull();
+        TodoRules.TryDropBefore(order, "c", 0, out before).ShouldBeTrue();
+        before.ShouldBe("a");
+
+        // Just above or just below itself is where it already is.
+        TodoRules.TryDropBefore(order, "b", 1, out _).ShouldBeFalse();
+        TodoRules.TryDropBefore(order, "b", 2, out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public void A_task_file_round_trips_with_quotes_and_line_breaks()
     {
         var task = Task();
