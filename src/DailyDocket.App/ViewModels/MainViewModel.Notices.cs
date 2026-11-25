@@ -32,13 +32,8 @@ public sealed partial class MainViewModel
             NoticeTab.Slack, s.Key, s.Key, $"{s.From} is waiting in Slack", s.Why is { Length: > 0 } why ? $"{s.Where}: {why}" : s.Where)));
         items.AddRange(_outbox.WithStatus(OutboxStatus.Held, OutboxStatus.Failed).Select(NoticeRules.FromOutbox).OfType<AttentionItem>());
 
-        var notices = NoticeRules.Diff(_noticed, items);
+        var notices = NoticeRules.Diff(_noticed, NoticeRules.Wanted(items, _settings.Notify));
         _noticed = NoticeRules.Keys(items);
-        if (!_settings.Notifications)
-        {
-            return;
-        }
-
         foreach (var notice in notices)
         {
             NoticeRaised?.Invoke(notice);
