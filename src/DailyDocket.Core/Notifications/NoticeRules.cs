@@ -1,3 +1,4 @@
+using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Outbox;
 
 namespace DailyDocket.Core.Notifications;
@@ -50,6 +51,18 @@ public static class NoticeRules
 
         return notices;
     }
+
+    /// <summary>
+    /// The items Mike asked to hear about. Applied to the items being diffed, never to the
+    /// baseline: everything listed still counts as seen, so widening the setting later does not
+    /// announce the whole backlog at once.
+    /// </summary>
+    public static IReadOnlyList<AttentionItem> Wanted(IReadOnlyList<AttentionItem> items, NotifyAbout notify) => notify switch
+    {
+        NotifyAbout.Everything => items,
+        NotifyAbout.SendProblems => [.. items.Where(IsOutbox)],
+        _ => [],
+    };
 
     /// <summary>The keys of <paramref name="now"/>, to pass as the next look's "before".</summary>
     public static IReadOnlySet<string> Keys(IEnumerable<AttentionItem> now) => now.Select(Id).ToHashSet(StringComparer.Ordinal);

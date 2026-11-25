@@ -5,6 +5,34 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DailyDocket.Core.Infrastructure;
 
+/// <summary>What raises a Windows notification.</summary>
+public enum NotifyAbout
+{
+    /// <summary>Anything new: an owed email or Slack conversation, or a reply that did not go.</summary>
+    Everything,
+
+    /// <summary>Only a reply that was held or failed to send.</summary>
+    SendProblems,
+
+    Nothing,
+}
+
+/// <summary>
+/// Reads <see cref="NotifyAbout"/> by name and falls back to the default for one it does not know
+/// (a hand edit, or a choice added by a newer version). The stock converter throws instead, and a
+/// throw while loading resets every setting, not just this one.
+/// </summary>
+internal sealed class NotifyAboutConverter : JsonConverter<NotifyAbout>
+{
+    public override NotifyAbout Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.String && Enum.TryParse<NotifyAbout>(reader.GetString(), ignoreCase: true, out var value)
+            && Enum.IsDefined(value) && !int.TryParse(reader.GetString(), out _)
+            ? value
+            : NotifyAbout.SendProblems;
+
+    public override void Write(Utf8JsonWriter writer, NotifyAbout value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString());
+}
+
 /// <summary>Per-user settings. Nothing here is a secret; sign-ins belong to git, gh and Claude.</summary>
 public sealed class AppSettings
 {
@@ -47,8 +75,20 @@ public sealed class AppSettings
     /// <summary>Use the beta update channel (for trying a release before everyone gets it).</summary>
     public bool BetaUpdates { get; set; }
 
-    /// <summary>A Windows notification when something new needs Mike: an owed email or Slack conversation, or a held or failed reply.</summary>
-    public bool Notifications { get; set; } = true;
+    /// <summary>
+    /// What raises a Windows notification. Only replies that did not go, by default: most of what
+    /// the Email and Slack tabs list is old and waits for Mike's next look, but a reply he thinks
+    /// went out and did not is news.
+    /// </summary>
+    [JsonConverter(typeof(NotifyAboutConverter))]
+    public NotifyAbout Notify { get; set; } = NotifyAbout.SendProblems;
+
+    /// <summary>
+    /// The on/off switch before <see cref="Notify"/>, read once so that off stays off; null after
+    /// that. "On" was everyone's default, so it moves to the new default rather than to Everything.
+    /// </summary>
+    [JsonPropertyName("Notifications")]
+    public bool? LegacyNotifications { get; set; }
 
     /// <summary>Minimizing hides the window to the notification area, where DailyDocket keeps syncing.</summary>
     public bool MinimizeToTray { get; set; } = true;
@@ -99,6 +139,13 @@ public sealed class SettingsStore
             // A deserialized dictionary loses its comparer; the keys are case-insensitive.
             settings.ClaudeSessions = new Dictionary<string, string>(
                 settings.ClaudeSessions ?? [], StringComparer.OrdinalIgnoreCase);
+
+            if (settings.LegacyNotifications == false)
+            {
+                settings.Notify = NotifyAbout.Nothing;
+            }
+
+            settings.LegacyNotifications = null;
             return settings;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
