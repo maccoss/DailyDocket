@@ -33,12 +33,13 @@ public sealed class TrayIcon : IDisposable
         _settings = settings;
         _settingsStore = settingsStore;
 
-        _notifications = new Forms.ToolStripMenuItem("Notifications") { Checked = settings.Notifications, CheckOnClick = true };
-        _notifications.CheckedChanged += (_, _) =>
+        _notifications = new Forms.ToolStripMenuItem("Notifications");
+        foreach (var (label, choice) in NotifyChoices)
         {
-            _settings.Notifications = _notifications.Checked;
-            _settingsStore.Save(_settings);
-        };
+            var item = new Forms.ToolStripMenuItem(label) { Checked = settings.Notify == choice, Tag = choice };
+            item.Click += (_, _) => Choose(choice);
+            _notifications.DropDownItems.Add(item);
+        }
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open DailyDocket", null, (_, _) => ShowWindow());
@@ -70,6 +71,23 @@ public sealed class TrayIcon : IDisposable
         };
 
         _viewModel.NoticeRaised += Show;
+    }
+
+    private static readonly (string Label, NotifyAbout Choice)[] NotifyChoices =
+    [
+        ("Only replies that did not send", NotifyAbout.SendProblems),
+        ("Everything new that needs a reply", NotifyAbout.Everything),
+        ("None", NotifyAbout.Nothing),
+    ];
+
+    private void Choose(NotifyAbout choice)
+    {
+        _settings.Notify = choice;
+        _settingsStore.Save(_settings);
+        foreach (Forms.ToolStripMenuItem item in _notifications.DropDownItems)
+        {
+            item.Checked = (NotifyAbout)item.Tag! == choice;
+        }
     }
 
     /// <summary>Brings the window back from the notification area or the taskbar.</summary>

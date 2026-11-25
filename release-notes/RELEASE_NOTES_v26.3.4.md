@@ -1,6 +1,16 @@
 # DailyDocket v26.3.4
 
-DailyDocket can no longer get stuck on a version older than its database.
+DailyDocket can no longer get stuck on a version older than its database, and notifications
+in the corner of the screen are now only for replies that did not send, unless you choose otherwise.
+
+## New Features
+
+- **Notifications are for replies that were held or did not send, by default.** The Email and
+  Slack tabs still list everything waiting on you, and most of it is old by the time it is listed.
+  To choose, right-click DailyDocket's icon in the notification area and pick under
+  Notifications: only replies that did not send, everything new that needs a reply (as before),
+  or none. If you had turned notifications off, they stay off
+  (`src/DailyDocket.Core/Infrastructure/SettingsStore.cs`, `src/DailyDocket.App/Services/TrayIcon.cs`).
 
 ## Bug Fixes
 
