@@ -236,6 +236,10 @@ public sealed partial class TodoViewModel : ObservableObject
         var shown = Filter is null ? items : [.. items.Where(t => t.Tags.Contains(Filter, StringComparer.OrdinalIgnoreCase))];
         var editing = Open.Concat(Done).Where(v => v.IsEditing).ToDictionary(v => v.Id);
 
+        // A card whose task and due label have not changed is kept as it is: rebuilding every card's
+        // template on each change (a drop, a check) made the list visibly slow to settle.
+        var current = Open.Concat(Done).GroupBy(v => v.Id).ToDictionary(g => g.Key, g => g.First());
+
         TodoView View(TodoItem t)
         {
             if (editing.TryGetValue(t.Id, out var kept) && kept.Item == t)
@@ -244,12 +248,17 @@ public sealed partial class TodoViewModel : ObservableObject
             }
 
             var (due, late) = TodoRules.DueLabel(t.Due, today);
+            if (current.TryGetValue(t.Id, out var same) && same.Item == t && same.DueText == due && same.Late == (late && !t.Done))
+            {
+                return same;
+            }
+
             var source = t.Source is { } s ? $"From {(s.Kind == "slack" ? "Slack" : "email")}{(s.Subject is { Length: > 0 } subj ? $": {subj}" : "")}" : null;
             return new TodoView(t, [.. t.Tags.Select(tag => Tag(tag, 0, false))], due, late && !t.Done, source);
         }
 
-        Replace(Open, TodoRules.OpenInOrder(shown).Select(View));
-        Replace(Done, TodoRules.DoneRecentFirst(shown).Take(15).Select(View));
+        Replace(Open, [.. TodoRules.OpenInOrder(shown).Select(View)]);
+        Replace(Done, [.. TodoRules.DoneRecentFirst(shown).Take(15).Select(View)]);
         HasDone = Done.Count > 0;
 
         var open = items.Count(t => !t.Done);
@@ -258,19 +267,54 @@ public sealed partial class TodoViewModel : ObservableObject
         OnPropertyChanged(nameof(KnownTags));
     }
 
+    // Frozen and shared: a brush per tag per refresh added up once the list grew.
+    private static readonly Dictionary<string, Brush> BrushCache = [];
+
+    private static Brush FromHex(string hex)
+    {
+        if (!BrushCache.TryGetValue(hex, out var brush))
+        {
+            brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+            brush.Freeze();
+            BrushCache[hex] = brush;
+        }
+
+        return brush;
+    }
+
     private static TagView Tag(string name, int count, bool on)
     {
         var (fg, bg) = Palette[TodoRules.TagHue(name)];
-        Brush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
-        return new TagView(name, count, on ? Brushes.White : Brush(fg), on ? Brush(fg) : Brush(bg), on);
+        return new TagView(name, count, on ? Brushes.White : FromHex(fg), on ? FromHex(fg) : FromHex(bg), on);
     }
 
-    private static void Replace(ObservableCollection<TodoView> target, IEnumerable<TodoView> items)
+    /// <summary>
+    /// Makes <paramref name="target"/> equal <paramref name="items"/> by moving, inserting and removing,
+    /// so a card already shown keeps its container instead of being drawn again.
+    /// </summary>
+    private static void Replace(ObservableCollection<TodoView> target, IReadOnlyList<TodoView> items)
     {
-        target.Clear();
-        foreach (var item in items)
+        for (var i = 0; i < items.Count; i++)
         {
-            target.Add(item);
+            var at = target.IndexOf(items[i]);
+            if (at == i)
+            {
+                continue;
+            }
+
+            if (at > i)
+            {
+                target.Move(at, i);
+            }
+            else
+            {
+                target.Insert(i, items[i]);
+            }
+        }
+
+        while (target.Count > items.Count)
+        {
+            target.RemoveAt(target.Count - 1);
         }
     }
 

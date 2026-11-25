@@ -69,10 +69,9 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <Button Content="&#x25B2;" Style="{StaticResource SmallLink}" Margin="0" FontSize="9" ToolTip="Move up (Alt+Up)"
-                                Command="{Binding DataContext.UpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
-                        <Button Content="&#x25BC;" Style="{StaticResource SmallLink}" Margin="0,2,0,0" FontSize="9" ToolTip="Move down (Alt+Down)"
-                                Command="{Binding DataContext.DownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                        <!-- The grip says the card can be dragged; the whole card drags, not just this. -->
+                        <TextBlock Text="&#x22EE;&#x22EE;" FontSize="15" FontWeight="Bold" Foreground="{StaticResource MutedBrush}" Cursor="SizeAll"
+                                   Margin="0,0,2,0" ToolTip="Drag to reorder (or Alt+Up, Alt+Down)" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" IsChecked="{Binding Done, Mode=OneWay}" Margin="0,2,8,0" VerticalAlignment="Top" ToolTip="Done"
                               Command="{Binding DataContext.ToggleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
@@ -194,10 +193,10 @@
             </ItemsControl>
         </DockPanel>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
-                <ItemsControl x:Name="OpenList" ItemsSource="{Binding Open}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" AllowDrop="True"
-                              PreviewMouseLeftButtonDown="OnPressTask" PreviewMouseMove="OnDragTask" DragOver="OnDragOverTask" Drop="OnDropTask" />
+                <ItemsControl x:Name="OpenList" ItemsSource="{Binding Open}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" AllowDrop="True" Background="Transparent"
+                              PreviewMouseLeftButtonDown="OnPressTask" PreviewMouseMove="OnDragTask" DragOver="OnDragOverTask" DragLeave="OnDragLeaveTask" Drop="OnDropTask" />
                 <TextBlock Text="DONE" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Ink2Brush}" Margin="0,14,0,7"
                            Visibility="{Binding HasDone, Converter={StaticResource BoolToVisibility}}" />
                 <ItemsControl ItemsSource="{Binding Done}" ItemTemplate="{StaticResource TodoTemplate}" Focusable="False" />
