@@ -1,3 +1,4 @@
+using DailyDocket.Core.Infrastructure;
 using DailyDocket.Core.Notifications;
 using DailyDocket.Core.Outbox;
 
@@ -8,6 +9,62 @@ public sealed class NoticeTests
     private static AttentionItem Email(string key) => new(NoticeTab.Email, key, key, $"Pat {key} is waiting on a reply", "\"QC report\": asks for data");
 
     private static AttentionItem Slack(string key) => new(NoticeTab.Slack, key, key, "Sam is waiting in Slack", "#lab: asks a question");
+
+    private static AttentionItem Failed(string id) => new(NoticeTab.Email, $"outbox:{id}:Failed", "t9", "A reply was not sent", "\"QC report\": offline");
+
+    [Fact]
+    public void The_setting_picks_what_is_announced_but_everything_listed_counts_as_seen()
+    {
+        var before = NoticeRules.Keys([Email("t1")]);
+        IReadOnlyList<AttentionItem> now = [Email("t1"), Email("t2"), Slack("C1~main"), Failed("o1")];
+
+        NoticeRules.Diff(before, NoticeRules.Wanted(now, NotifyAbout.SendProblems)).ShouldHaveSingleItem().Title.ShouldBe("A reply was not sent");
+        NoticeRules.Diff(before, NoticeRules.Wanted(now, NotifyAbout.Nothing)).ShouldBeEmpty();
+        NoticeRules.Diff(before, NoticeRules.Wanted(now, NotifyAbout.Everything)).Count.ShouldBe(3);
+
+        // Switched to Everything after a look: only what arrives from then on is announced.
+        var seen = NoticeRules.Keys(now);
+        NoticeRules.Diff(seen, NoticeRules.Wanted([.. now, Email("t3")], NotifyAbout.Everything)).ShouldHaveSingleItem().Select.ShouldBe("t3");
+    }
+
+    [Fact]
+    public void The_old_on_off_switch_keeps_off_and_moves_on_to_the_new_default()
+    {
+        var dir = Directory.CreateTempSubdirectory("dd-settings-").FullName;
+        try
+        {
+            var path = Path.Combine(dir, "settings.json");
+            var store = new SettingsStore(path);
+
+            File.WriteAllText(path, """{"Notifications": false}""");
+            store.Load().Notify.ShouldBe(NotifyAbout.Nothing);
+
+            File.WriteAllText(path, """{"Notifications": true}""");
+            var on = store.Load();
+            on.Notify.ShouldBe(NotifyAbout.SendProblems);
+
+            // Saved once, the old switch is gone and the choice is written by name.
+            on.Notify = NotifyAbout.Everything;
+            store.Save(on);
+            var text = File.ReadAllText(path);
+            text.ShouldNotContain("\"Notifications\"");
+            text.ShouldContain("\"Notify\": \"Everything\"");
+            store.Load().Notify.ShouldBe(NotifyAbout.Everything);
+
+            // A choice this version does not know falls back to the default and keeps the other settings.
+            foreach (var unknown in new[] { "\"Sometimes\"", "7", "\"7\"" })
+            {
+                File.WriteAllText(path, $$"""{"Notify": {{unknown}}, "PullIntervalMinutes": 5}""");
+                var loaded = store.Load();
+                loaded.Notify.ShouldBe(NotifyAbout.SendProblems);
+                loaded.PullIntervalMinutes.ShouldBe(5);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 
     [Fact]
     public void The_first_look_only_sets_the_baseline()
