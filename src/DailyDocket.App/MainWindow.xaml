@@ -515,7 +515,7 @@
                             <StackPanel.Visibility>
                                 <Binding Path="SlackReaderTitle" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
                             </StackPanel.Visibility>
-                            <Button Content="Reply" Command="{Binding ReplySlackCommand}" Margin="0,0,18,0" />
+                            <Button Content="Reply in Slack" Command="{Binding ReplySlackCommand}" ToolTip="Open this conversation in the Slack app to reply there" Margin="0,0,18,0" />
                             <Button Content="To do" Command="{Binding CaptureSlackCommand}" ToolTip="Make this a task and mark it handled" Margin="0,0,6,0" />
                             <Button Content="Handled" Command="{Binding HandleSlackCommand}" ToolTip="Hide this until someone writes again" />
                         </StackPanel>

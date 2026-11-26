@@ -216,4 +216,57 @@ public sealed class SlackTests
         SlackParser.ReactedBy("""{"reactions":[{"name":"thumbsup","users":["U0000000001"]}]}""", "U0000000001").ShouldBeTrue();
         SlackParser.ReactedBy("""{"reactions":[]}""", "U0000000001").ShouldBeFalse();
     }
+
+    [Fact]
+    public void Reply_opens_the_conversation_in_the_Slack_app_with_the_team_from_its_own_state()
+    {
+        const string State = """
+            {"workspaces": {
+              "T0000000001": {"id": "T0000000001", "domain": "examplelab", "name": "Example Lab", "url": "https://examplelab.slack.com/"},
+              "T0000000002": {"id": "T0000000002", "domain": "other", "name": "Other"},
+              "bad": {"id": "not an id", "domain": "broken"}
+            }}
+            """;
+        var teams = SlackLinks.TeamsFromSlackState(State);
+        teams.Count.ShouldBe(2);
+
+        var domain = SlackLinks.Domain("https://ExampleLab.slack.com/archives/C0000000001/p1795881700000300?thread_ts=1795881600.000100").ShouldNotBeNull();
+        domain.ShouldBe("examplelab");
+
+        SlackLinks.AppLink(teams[domain], "C0000000001", "1795881700.000300", "1795881600.000100")
+            .ShouldBe("slack://channel?team=T0000000001&id=C0000000001&message=1795881700.000300&thread_ts=1795881600.000100");
+        SlackLinks.AppLink(teams[domain], "D0000000001", "1795881700.000300", null)
+            .ShouldBe("slack://channel?team=T0000000001&id=D0000000001&message=1795881700.000300");
+    }
+
+    [Fact]
+    public void Without_a_team_or_with_odd_ids_there_is_no_app_link()
+    {
+        SlackLinks.AppLink(null, "C0000000001", null, null).ShouldBeNull();
+        SlackLinks.AppLink("T0000000001", "C1&evil=1", null, null).ShouldBeNull();
+        SlackLinks.AppLink("T0000000001", "C0000000001", "1795881700.000300&x=1", null).ShouldBe("slack://channel?team=T0000000001&id=C0000000001");
+        SlackLinks.TeamsFromSlackState("not json").ShouldBeEmpty();
+        SlackLinks.TeamsFromSlackState("""{"workspaces": []}""").ShouldBeEmpty();
+        SlackLinks.Domain("https://example.com/archives/C1/p1").ShouldBeNull();
+    }
+
+    [Fact]
+    public void Reply_goes_to_the_app_when_the_team_is_known_and_keeps_the_permalink_for_the_browser()
+    {
+        var teams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["examplelab"] = "T0000000001" };
+        const string Link = "https://examplelab.slack.com/archives/C0000000001/p1795881700000300";
+
+        var (app, web) = SlackLinks.ReplyTargets(Link, null, teams, "C0000000001", "1795881700.000300", null);
+        app.ShouldBe("slack://channel?team=T0000000001&id=C0000000001&message=1795881700.000300");
+        web.ShouldBe(Link);
+
+        // No permalink on this conversation: the workspace seen elsewhere still finds the team.
+        SlackLinks.ReplyTargets(null, "examplelab", teams, "D0000000001", null, null).ShouldBe(("slack://channel?team=T0000000001&id=D0000000001", null));
+
+        // A workspace the Slack app is not signed in to: the browser only.
+        SlackLinks.ReplyTargets("https://elsewhere.slack.com/archives/C1/p1", null, teams, "C0000000001", null, null).App.ShouldBeNull();
+
+        // Nothing known: nowhere to go, and a link to another site is never opened.
+        SlackLinks.ReplyTargets("https://example.com/x", null, teams, "C0000000001", null, null).ShouldBe((null, null));
+    }
 }
