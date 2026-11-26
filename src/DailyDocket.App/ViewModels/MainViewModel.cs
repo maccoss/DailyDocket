@@ -519,7 +519,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedSlackChanged(SlackItem? value)
     {
         LoadSlackReader(value);
-        OpenDraftOrClose(SlackCompose, value?.Key, () => ReplySlack());
+        OpenDraftOrClose(SlackCompose, value?.Key, OpenSlackDraft);
         ReloadOutbox();
     }
 
@@ -565,6 +565,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         MailCompose.Open(m.Key, newest.Id, null, m.Subject, newest.Id, to, cc, replyAll ? "Reply all" : $"Reply to {m.From}", () => MailConversation(m.Key));
     }
 
+    /// <summary>
+    /// Opens the conversation in the Slack app, where Mike replies himself: a reply sent through the
+    /// connector carries a "Sent using @Claude" line that cannot be turned off. The browser gets the
+    /// permalink when the Slack app or its workspace is not on this computer.
+    /// </summary>
     [RelayCommand]
     private void ReplySlack()
     {
@@ -573,7 +578,75 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var permalink = conv.Messages.LastOrDefault(m => m.Permalink is not null)?.Permalink;
+        var domain = Core.Slack.SlackLinks.Domain(permalink) ?? _slackDomain;
+        var team = domain is not null && SlackTeams().TryGetValue(domain, out var t) ? t : null;
+        if (Core.Slack.SlackLinks.AppLink(team, conv.ChannelId, conv.Last.Ts, conv.ThreadTs) is { } app && SchemeRegistered("slack") && Launch(app))
+        {
+            return;
+        }
+
+        if (permalink is not null)
+        {
+            Open(permalink);
+        }
+        else
+        {
+            Status = "Slack could not be opened at this conversation: the Slack app is not set up on this computer and no link to the message was saved.";
+        }
+    }
+
+    /// <summary>
+    /// A reply written in DailyDocket before Reply moved to the Slack app (or held or failed since)
+    /// still opens here, so it can be sent or discarded rather than lost.
+    /// </summary>
+    private void OpenSlackDraft()
+    {
+        if (SelectedSlack is not { } s || _store.Conversation(s.Key) is not { } conv)
+        {
+            return;
+        }
+
         SlackCompose.Open(s.Key, conv.ThreadTs, conv.ChannelId, s.Where, conv.Last.Ts, [], [], conv.ThreadTs is null ? $"Reply in {s.Where}" : "Reply in thread", () => SlackConversation(s.Key));
+    }
+
+    // A Slack workspace domain seen in any listed conversation, for one whose messages came without a permalink.
+    private string? _slackDomain;
+
+    /// <summary>
+    /// Team ids by workspace domain, from the Slack desktop app's own state: the classic install's
+    /// folder, or the Microsoft Store package's. Read at each Reply, so signing in to a workspace
+    /// needs no restart.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> SlackTeams()
+    {
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        IEnumerable<string> candidates = [Path.Combine(roaming, "Slack", "storage", "root-state.json")];
+        var packages = Path.Combine(local, "Packages");
+        if (Directory.Exists(packages))
+        {
+            candidates = candidates.Concat(Directory.EnumerateDirectories(packages, "com.tinyspeck.slackdesktop_*")
+                .Select(d => Path.Combine(d, "LocalCache", "Roaming", "Slack", "storage", "root-state.json")));
+        }
+
+        foreach (var file in candidates.Where(File.Exists))
+        {
+            try
+            {
+                var teams = Core.Slack.SlackLinks.TeamsFromSlackState(File.ReadAllText(file));
+                if (teams.Count > 0)
+                {
+                    return teams;
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Serilog.Log.Warning(e, "Reading the Slack app's workspaces failed");
+            }
+        }
+
+        return new Dictionary<string, string>();
     }
 
     /// <summary>Undo inside the window: back to a draft, open for editing. Nothing was sent.</summary>
@@ -978,6 +1051,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ReloadSlack(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
         var rows = _store.SlackRows(config, _jobs.SlackSince(now), _book.Handled);
+        _slackDomain = rows.Select(r => Core.Slack.SlackLinks.Domain(r.Permalink)).FirstOrDefault(d => d is not null) ?? _slackDomain;
         var owed = rows.Where(r => r.State == "Owed").Select(r => new SlackItem(
             r.Key,
             r.From,

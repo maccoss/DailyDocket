@@ -216,4 +216,37 @@ public sealed class SlackTests
         SlackParser.ReactedBy("""{"reactions":[{"name":"thumbsup","users":["U0000000001"]}]}""", "U0000000001").ShouldBeTrue();
         SlackParser.ReactedBy("""{"reactions":[]}""", "U0000000001").ShouldBeFalse();
     }
+
+    [Fact]
+    public void Reply_opens_the_conversation_in_the_Slack_app_with_the_team_from_its_own_state()
+    {
+        const string State = """
+            {"workspaces": {
+              "T0000000001": {"id": "T0000000001", "domain": "examplelab", "name": "Example Lab", "url": "https://examplelab.slack.com/"},
+              "T0000000002": {"id": "T0000000002", "domain": "other", "name": "Other"},
+              "bad": {"id": "not an id", "domain": "broken"}
+            }}
+            """;
+        var teams = SlackLinks.TeamsFromSlackState(State);
+        teams.Count.ShouldBe(2);
+
+        var domain = SlackLinks.Domain("https://ExampleLab.slack.com/archives/C0000000001/p1795881700000300?thread_ts=1795881600.000100").ShouldNotBeNull();
+        domain.ShouldBe("examplelab");
+
+        SlackLinks.AppLink(teams[domain], "C0000000001", "1795881700.000300", "1795881600.000100")
+            .ShouldBe("slack://channel?team=T0000000001&id=C0000000001&message=1795881700.000300&thread_ts=1795881600.000100");
+        SlackLinks.AppLink(teams[domain], "D0000000001", "1795881700.000300", null)
+            .ShouldBe("slack://channel?team=T0000000001&id=D0000000001&message=1795881700.000300");
+    }
+
+    [Fact]
+    public void Without_a_team_or_with_odd_ids_there_is_no_app_link()
+    {
+        SlackLinks.AppLink(null, "C0000000001", null, null).ShouldBeNull();
+        SlackLinks.AppLink("T0000000001", "C1&evil=1", null, null).ShouldBeNull();
+        SlackLinks.AppLink("T0000000001", "C0000000001", "1795881700.000300&x=1", null).ShouldBe("slack://channel?team=T0000000001&id=C0000000001");
+        SlackLinks.TeamsFromSlackState("not json").ShouldBeEmpty();
+        SlackLinks.TeamsFromSlackState("""{"workspaces": []}""").ShouldBeEmpty();
+        SlackLinks.Domain("https://example.com/archives/C1/p1").ShouldBeNull();
+    }
 }
