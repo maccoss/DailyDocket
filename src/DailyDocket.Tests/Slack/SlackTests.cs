@@ -249,4 +249,24 @@ public sealed class SlackTests
         SlackLinks.TeamsFromSlackState("""{"workspaces": []}""").ShouldBeEmpty();
         SlackLinks.Domain("https://example.com/archives/C1/p1").ShouldBeNull();
     }
+
+    [Fact]
+    public void Reply_goes_to_the_app_when_the_team_is_known_and_keeps_the_permalink_for_the_browser()
+    {
+        var teams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["examplelab"] = "T0000000001" };
+        const string Link = "https://examplelab.slack.com/archives/C0000000001/p1795881700000300";
+
+        var (app, web) = SlackLinks.ReplyTargets(Link, null, teams, "C0000000001", "1795881700.000300", null);
+        app.ShouldBe("slack://channel?team=T0000000001&id=C0000000001&message=1795881700.000300");
+        web.ShouldBe(Link);
+
+        // No permalink on this conversation: the workspace seen elsewhere still finds the team.
+        SlackLinks.ReplyTargets(null, "examplelab", teams, "D0000000001", null, null).ShouldBe(("slack://channel?team=T0000000001&id=D0000000001", null));
+
+        // A workspace the Slack app is not signed in to: the browser only.
+        SlackLinks.ReplyTargets("https://elsewhere.slack.com/archives/C1/p1", null, teams, "C0000000001", null, null).App.ShouldBeNull();
+
+        // Nothing known: nowhere to go, and a link to another site is never opened.
+        SlackLinks.ReplyTargets("https://example.com/x", null, teams, "C0000000001", null, null).ShouldBe((null, null));
+    }
 }

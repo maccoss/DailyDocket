@@ -579,21 +579,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var permalink = conv.Messages.LastOrDefault(m => m.Permalink is not null)?.Permalink;
-        var domain = Core.Slack.SlackLinks.Domain(permalink) ?? _slackDomain;
-        var team = domain is not null && SlackTeams().TryGetValue(domain, out var t) ? t : null;
-        if (Core.Slack.SlackLinks.AppLink(team, conv.ChannelId, conv.Last.Ts, conv.ThreadTs) is { } app && SchemeRegistered("slack") && Launch(app))
+        var (app, web) = Core.Slack.SlackLinks.ReplyTargets(permalink, _slackDomain, SlackTeams(), conv.ChannelId, conv.Last.Ts, conv.ThreadTs);
+        if (app is not null && SchemeRegistered("slack") && Launch(app))
         {
             return;
         }
 
-        if (permalink is not null)
+        if (web is not null && Launch(web))
         {
-            Open(permalink);
+            return;
         }
-        else
-        {
-            Status = "Slack could not be opened at this conversation: the Slack app is not set up on this computer and no link to the message was saved.";
-        }
+
+        // A message box, not the status line: a sync starting a moment later would replace that.
+        Serilog.Log.Warning("Reply in Slack found no way to open conversation {Key}", s.Key);
+        MessageBox.Show(
+            $"DailyDocket could not open this conversation in Slack: the Slack app is not signed in to its workspace on this computer, and no link to the message was saved.\n\nOpen Slack and go to {s.Where} to reply there.",
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     /// <summary>
@@ -622,12 +623,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        IEnumerable<string> candidates = [Path.Combine(roaming, "Slack", "storage", "root-state.json")];
-        var packages = Path.Combine(local, "Packages");
-        if (Directory.Exists(packages))
+        List<string> candidates = [Path.Combine(roaming, "Slack", "storage", "root-state.json")];
+        try
         {
-            candidates = candidates.Concat(Directory.EnumerateDirectories(packages, "com.tinyspeck.slackdesktop_*")
-                .Select(d => Path.Combine(d, "LocalCache", "Roaming", "Slack", "storage", "root-state.json")));
+            // Listed here, inside the catch: a package folder that cannot be read sends Reply to
+            // the browser rather than failing the click.
+            var packages = Path.Combine(local, "Packages");
+            if (Directory.Exists(packages))
+            {
+                candidates.AddRange(Directory.GetDirectories(packages, "com.tinyspeck.slackdesktop_*")
+                    .Select(d => Path.Combine(d, "LocalCache", "Roaming", "Slack", "storage", "root-state.json")));
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Serilog.Log.Warning(e, "Looking for the Microsoft Store Slack app failed");
         }
 
         foreach (var file in candidates.Where(File.Exists))

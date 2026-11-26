@@ -38,6 +38,24 @@ public static partial class SlackLinks
         return link;
     }
 
+    /// <summary>
+    /// Where Reply goes: the Slack app's link when the workspace's team id is known, and the
+    /// message's permalink for the browser. The workspace comes from the conversation's permalink,
+    /// or from <paramref name="fallbackDomain"/> (seen in another conversation) when its messages
+    /// came without one. Either may be null; both null means nowhere to send Mike.
+    /// </summary>
+    public static (string? App, string? Web) ReplyTargets(
+        string? permalink, string? fallbackDomain, IReadOnlyDictionary<string, string> teams, string channelId, string? messageTs, string? threadTs)
+    {
+        var domain = Domain(permalink) ?? fallbackDomain;
+        var team = domain is not null && teams.TryGetValue(domain, out var t) ? t : null;
+        // Handed to Windows as given, so only a well-formed https link to a Slack workspace, normalized.
+        var web = permalink is not null && PermalinkHost().IsMatch(permalink) && Uri.TryCreate(permalink, UriKind.Absolute, out var uri)
+            ? uri.AbsoluteUri
+            : null;
+        return (AppLink(team, channelId, messageTs, threadTs), web);
+    }
+
     /// <summary>The workspace domain in a permalink (maccosslab in https://maccosslab.slack.com/archives/...), or null.</summary>
     public static string? Domain(string? permalink) =>
         permalink is not null && PermalinkHost().Match(permalink) is { Success: true } m ? m.Groups[1].Value.ToLowerInvariant() : null;
