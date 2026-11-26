@@ -6,6 +6,11 @@ impact first, empty headings deleted at release.
 
 ## New Features
 
+- The Email and Slack lists can be sorted: oldest first (as before), newest first, by sender, or
+  by subject (Email) or channel (Slack). Pick from Sort above each list; each tab remembers its
+  choice. Unsent drafts stay at the top. With newest first, a new email no longer sits at the
+  bottom of a long list.
+
 ## Bug Fixes
 
 ## Performance

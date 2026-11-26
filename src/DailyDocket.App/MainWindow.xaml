@@ -317,7 +317,12 @@
                         <ColumnDefinition Width="3*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="{Binding MailSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                            <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding MailOrders}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding MailOrder}" MinWidth="120" VerticalAlignment="Center" ToolTip="Sort the list" AutomationProperties.Name="Sort email" />
+                            <TextBlock DockPanel.Dock="Right" Text="Sort" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,6,0" />
+                            <TextBlock Text="{Binding MailSummary}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        </DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
                             <DockPanel.Visibility>
                                 <Binding Path="UndoText" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
@@ -465,7 +470,12 @@
                         <ColumnDefinition Width="3*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="{Binding SlackSummary}" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                            <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding SlackOrders}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding SlackOrder}" MinWidth="120" VerticalAlignment="Center" ToolTip="Sort the list" AutomationProperties.Name="Sort Slack" />
+                            <TextBlock DockPanel.Dock="Right" Text="Sort" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,6,0" />
+                            <TextBlock Text="{Binding SlackSummary}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        </DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
                             <DockPanel.Visibility>
                                 <Binding Path="UndoText" Converter="{x:Static vm:Converters.NonEmptyToVisibility}" />
