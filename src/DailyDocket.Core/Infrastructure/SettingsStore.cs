@@ -18,20 +18,25 @@ public enum NotifyAbout
 }
 
 /// <summary>
-/// Reads <see cref="NotifyAbout"/> by name and falls back to the default for one it does not know
-/// (a hand edit, or a choice added by a newer version). The stock converter throws instead, and a
-/// throw while loading resets every setting, not just this one.
+/// Reads a setting's choice by name and falls back to its default for one it does not know (a hand
+/// edit, or a choice added by a newer version). The stock converter throws instead, and a throw
+/// while loading resets every setting, not just this one.
 /// </summary>
-internal sealed class NotifyAboutConverter : JsonConverter<NotifyAbout>
+internal abstract class NamedEnumConverter<T>(T fallback) : JsonConverter<T>
+    where T : struct, Enum
 {
-    public override NotifyAbout Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        reader.TokenType == JsonTokenType.String && Enum.TryParse<NotifyAbout>(reader.GetString(), ignoreCase: true, out var value)
+    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.String && Enum.TryParse<T>(reader.GetString(), ignoreCase: true, out var value)
             && Enum.IsDefined(value) && !int.TryParse(reader.GetString(), out _)
             ? value
-            : NotifyAbout.SendProblems;
+            : fallback;
 
-    public override void Write(Utf8JsonWriter writer, NotifyAbout value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString());
+    public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString());
 }
+
+internal sealed class NotifyAboutConverter() : NamedEnumConverter<NotifyAbout>(NotifyAbout.SendProblems);
+
+internal sealed class ListOrderConverter() : NamedEnumConverter<ListOrder>(ListOrder.OldestFirst);
 
 /// <summary>Per-user settings. Nothing here is a secret; sign-ins belong to git, gh and Claude.</summary>
 public sealed class AppSettings
@@ -89,6 +94,14 @@ public sealed class AppSettings
     /// </summary>
     [JsonPropertyName("Notifications")]
     public bool? LegacyNotifications { get; set; }
+
+    /// <summary>How the Email list is sorted, chosen above it.</summary>
+    [JsonConverter(typeof(ListOrderConverter))]
+    public ListOrder MailOrder { get; set; } = ListOrder.OldestFirst;
+
+    /// <summary>How the Slack list is sorted, chosen above it.</summary>
+    [JsonConverter(typeof(ListOrderConverter))]
+    public ListOrder SlackOrder { get; set; } = ListOrder.OldestFirst;
 
     /// <summary>Minimizing hides the window to the notification area, where DailyDocket keeps syncing.</summary>
     public bool MinimizeToTray { get; set; } = true;

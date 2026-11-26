@@ -29,6 +29,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly ConfigSource _config;
     private readonly TodoBook _book;
     private readonly AppSettings _settings;
+    private readonly SettingsStore _settingsStore;
+    private readonly bool _ordersLoaded;
     private readonly ILogger<MainViewModel> _log;
     private readonly CancellationTokenSource _stop = new();
     private SyncResult? _lastSync;
@@ -43,8 +45,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly System.Windows.Threading.DispatcherTimer _countdown = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainViewModel(Store store, JobStore jobs, SyncScheduler scheduler, ConfigSource config, TodoBook book, TodoViewModel todos, AppSettings settings,
-        OutboxStore outbox, OutboxWorker worker, Drafter drafter, ILogger<MainViewModel> log, SharedJobs shared)
+        OutboxStore outbox, OutboxWorker worker, Drafter drafter, ILogger<MainViewModel> log, SharedJobs shared, SettingsStore settingsStore)
     {
+        _settingsStore = settingsStore;
+        MailOrder = settings.MailOrder;
+        SlackOrder = settings.SlackOrder;
+        _ordersLoaded = true;
         _shared = shared;
         _outbox = outbox;
         _worker = worker;
@@ -947,6 +953,43 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The Email list's sort choices, labeled for the menu above it.</summary>
+    public IReadOnlyList<OrderChoice> MailOrders { get; } =
+    [
+        new("Oldest first", ListOrder.OldestFirst), new("Newest first", ListOrder.NewestFirst), new("Sender", ListOrder.Sender), new("Subject", ListOrder.Topic),
+    ];
+
+    /// <summary>The Slack list's sort choices; a conversation's topic is its channel or DM.</summary>
+    public IReadOnlyList<OrderChoice> SlackOrders { get; } =
+    [
+        new("Oldest first", ListOrder.OldestFirst), new("Newest first", ListOrder.NewestFirst), new("Sender", ListOrder.Sender), new("Channel", ListOrder.Topic),
+    ];
+
+    [ObservableProperty]
+    public partial ListOrder MailOrder { get; set; }
+
+    [ObservableProperty]
+    public partial ListOrder SlackOrder { get; set; }
+
+    // Remembered at once rather than on close: the window saves settings only when it closes in
+    // its normal size, and a choice made before a crash would otherwise be lost.
+    partial void OnMailOrderChanged(ListOrder value) => SaveOrder(() => _settings.MailOrder = value);
+
+    partial void OnSlackOrderChanged(ListOrder value) => SaveOrder(() => _settings.SlackOrder = value);
+
+    private void SaveOrder(Action set)
+    {
+        // The constructor sets both from the settings before the lists exist; nothing to save or redraw then.
+        if (!_ordersLoaded)
+        {
+            return;
+        }
+
+        set();
+        _settingsStore.Save(_settings);
+        Reload();
+    }
+
     internal void Reload()
     {
         var config = _config.Get();
@@ -1018,7 +1061,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ReloadMail(Core.Configuration.DocketConfig config, DateTimeOffset now)
     {
         var (rows, counts) = _store.MailRows(_jobs.MailSince(now), _book.Handled, _jobs.Deep(now));
-        var items = rows.Where(r => r.State is "Owed" or "Draft").Select(r =>
+        var shown = ListOrdering.Sort(rows.Where(r => r.State is "Owed" or "Draft"), MailOrder, r => r.WaitingSince, r => r.WaitingOn, r => r.Subject, r => r.State == "Draft");
+        var items = shown.Select(r =>
         {
             var waited = now - (r.WaitingSince ?? now);
             return new MailItem(
@@ -1062,7 +1106,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var rows = _store.SlackRows(config, _jobs.SlackSince(now), _book.Handled);
         _slackDomain = rows.Select(r => Core.Slack.SlackLinks.Domain(r.Permalink)).FirstOrDefault(d => d is not null) ?? _slackDomain;
-        var owed = rows.Where(r => r.State == "Owed").Select(r => new SlackItem(
+        var shown = ListOrdering.Sort(rows.Where(r => r.State == "Owed"), SlackOrder, r => r.When, r => r.From, r => r.Where);
+        var owed = shown.Select(r => new SlackItem(
             r.Key,
             r.From,
             RelativeAge(now - r.When),

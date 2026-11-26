@@ -84,3 +84,6 @@ public sealed record OutboxView(DailyDocket.Core.Outbox.OutboxItem Item, string 
 /// <summary>A conversation on the Slack tab.</summary>
 /// <param name="LastTs">The newest message's ts: what a Handled mark covers.</param>
 public sealed record SlackItem(string Key, string From, string Age, bool Stale, string Where, string Text, string? Why, string LastTs);
+
+/// <summary>One choice in a list's Sort menu.</summary>
+public sealed record OrderChoice(string Label, DailyDocket.Core.Infrastructure.ListOrder Value);

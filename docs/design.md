@@ -201,8 +201,8 @@ Four tabs, the same as the artifact, plus a status bar that always says whether 
 | --- | --- | --- |
 | Schedule | Week grid of the four calendars; Genome Sciences events shown quietly; clashes flagged on primary events only; each event on its own row; meeting brief under an event when one exists | Accept, decline, tentative; new event; open in Calendar |
 | To do | Open list in dragged order, or by date; tag filter; due labels (today, tomorrow, 3d late); stable tag colors | Add, edit, done, drag, recolor tag |
-| Email | Owed replies (who is waiting, Claude's one-line why), open loops (Mike promised something), unsent Gmail drafts first; the selected thread is read in full beside the list, from the cache | Reply in app (to all or chosen recipients, with basic formatting), draft with AI, To do, Handled |
-| Slack | DMs and mentions awaiting Mike, grouped by conversation; the selected conversation is read beside the list | Reply in Slack (opens the conversation in the Slack app), To do, Handled |
+| Email | Owed replies (who is waiting, Claude's one-line why), open loops (Mike promised something), unsent Gmail drafts first; the selected thread is read in full beside the list, from the cache; sorted oldest first, newest first, by sender or by subject (remembered) | Reply in app (to all or chosen recipients, with basic formatting), draft with AI, To do, Handled |
+| Slack | DMs and mentions awaiting Mike, grouped by conversation; the selected conversation is read beside the list; sorted oldest first, newest first, by sender or by channel (remembered) | Reply in Slack (opens the conversation in the Slack app), To do, Handled |
 
 Nothing sends Mike out to Gmail to read or answer: the app is where he reads and writes, online or not (decided November 2026). Slack is the exception for answering: Reply opens the conversation in the Slack app, because a message the connector sends carries a "Sent using @Claude" line that cannot be turned off (decided November 2026); he still reads Slack in the app.
 
